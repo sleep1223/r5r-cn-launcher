@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0). Must already exist.'
+        required: true
+        type: string
+      draft:
+        description: 'Publish as draft'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows amd64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          raw="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$raw" >> "$GITHUB_OUTPUT"
+          echo "version=${raw#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust (stable, x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: win-amd64-release
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust unit tests
+        working-directory: src-tauri
+        run: cargo test --lib --target x86_64-pc-windows-msvc --locked
+
+      - name: Build Tauri bundle (Windows amd64)
+        run: pnpm tauri build --target x86_64-pc-windows-msvc
+        env:
+          CARGO_BUILD_JOBS: '2'
+
+      - name: Stage release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          bundle_dir="src-tauri/target/x86_64-pc-windows-msvc/release/bundle"
+          # MSI
+          if compgen -G "$bundle_dir/msi/*.msi" > /dev/null; then
+            cp "$bundle_dir"/msi/*.msi release-artifacts/
+          fi
+          # NSIS setup.exe
+          if compgen -G "$bundle_dir/nsis/*-setup.exe" > /dev/null; then
+            cp "$bundle_dir"/nsis/*-setup.exe release-artifacts/
+          fi
+          ls -lah release-artifacts
+
+      - name: Upload build artifacts (CI retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5r-cn-launcher-${{ steps.version.outputs.version }}-windows-amd64
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-artifacts/*.msi
+            release-artifacts/*-setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
