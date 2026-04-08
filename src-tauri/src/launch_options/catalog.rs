@@ -2,24 +2,29 @@ use crate::launch_options::model::*;
 use once_cell::sync::Lazy;
 
 /// The full launch-option catalog. Authored by hand from
-/// `mxtools/apex启动项大全.txt` plus the user's CN-launcher defaults.
+/// `mxtools/src/data/apex_launch_options_config.ts` (the source of truth for
+/// the entries) plus the CN-launcher defaults at the top.
+///
+/// **Ordering matters:** the unit test in `compose.rs` locks in
+/// `["-language", "schinese", "+pylon_matchmaking_hostname", ...]` as the
+/// default-compose output, so the language + pylon entries MUST stay first
+/// (and stay enabled-by-default).
 pub fn catalog() -> &'static LaunchOptionCatalog {
     &CATALOG
 }
 
 static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
     categories: vec![
-        Category { id: "language",    label_zh: "语言与社区服" },
-        Category { id: "display",     label_zh: "画面与分辨率" },
-        Category { id: "window",      label_zh: "窗口模式" },
-        Category { id: "performance", label_zh: "性能与优先级" },
-        Category { id: "mouse",       label_zh: "鼠标输入" },
-        Category { id: "audio",       label_zh: "音频" },
-        Category { id: "hud",         label_zh: "调试与 HUD" },
+        Category { id: "language",    label_zh: "语言与体验" },
+        Category { id: "display",     label_zh: "画面与显示" },
+        Category { id: "performance", label_zh: "性能与帧率" },
+        Category { id: "input",       label_zh: "操作与输入" },
         Category { id: "voice",       label_zh: "配音语言" },
     ],
     entries: vec![
-        // ===== 语言与社区服 (defaults ON) =====
+        // ===== 语言与体验 — defaults at the top so the compose order stays
+        // `-language schinese +pylon_matchmaking_hostname r5r-org.sleep0.de`
+        // (locked in by `compose::tests::defaults_compose_to_chinese_and_pylon`).
         OptionEntry {
             id: "language",
             category: "language",
@@ -53,6 +58,28 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             conflicts_with: &[],
         },
         OptionEntry {
+            id: "skip_intro",
+            category: "language",
+            kind: OptionKind::Toggle { args: &["-novid"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "跳过开场动画",
+            description_zh: "省去开场视频，约快 5 秒。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
+            id: "softened_locale",
+            category: "language",
+            kind: OptionKind::Toggle { args: &["+cl_is_softened_locale", "1"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "击杀血雾改红光",
+            description_zh: "中文版默认效果：击倒敌人时闪一下红光。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
             id: "notimeout",
             category: "language",
             kind: OptionKind::Toggle { args: &["-notimeout"] },
@@ -75,7 +102,40 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             conflicts_with: &[],
         },
 
-        // ===== 画面与分辨率 =====
+        // ===== 画面与显示 =====
+        OptionEntry {
+            id: "fullscreen",
+            category: "display",
+            kind: OptionKind::Toggle { args: &["-fullscreen"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "全屏",
+            description_zh: "以全屏模式启动游戏。",
+            risk: RiskLevel::None,
+            conflicts_with: &["window", "noborder"],
+        },
+        OptionEntry {
+            id: "window",
+            category: "display",
+            kind: OptionKind::Toggle { args: &["-window"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "窗口",
+            description_zh: "以窗口模式启动游戏。",
+            risk: RiskLevel::None,
+            conflicts_with: &["fullscreen"],
+        },
+        OptionEntry {
+            id: "noborder",
+            category: "display",
+            kind: OptionKind::Toggle { args: &["-noborder"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "无边框",
+            description_zh: "以无边框窗口启动（建议同时勾选「窗口」）。",
+            risk: RiskLevel::None,
+            conflicts_with: &["fullscreen"],
+        },
         OptionEntry {
             id: "resolution",
             category: "display",
@@ -83,18 +143,42 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             default_enabled: false,
             default_value: Some(OptionValue::IntPair(1920, 1080)),
             label_zh: "强制分辨率",
-            description_zh: "以启动项设置游戏内分辨率（如 1920x1080）。非原生分辨率可能导致游戏无法启动，必要时请先在显卡驱动中添加自定义分辨率。",
+            description_zh:
+                "以启动项设置游戏内分辨率（如 1920x1080）。非原生分辨率可能导致游戏无法启动，必要时请先在显卡驱动中添加自定义分辨率。",
             risk: RiskLevel::Caution,
             conflicts_with: &[],
         },
         OptionEntry {
-            id: "letterbox_min_one",
+            id: "aspect_min",
             category: "display",
-            kind: OptionKind::Toggle { args: &["+mat_letterbox_aspect_min", "1.0"] },
+            kind: OptionKind::Float {
+                flag: "+mat_letterbox_aspect_min",
+                min: 1.0,
+                max: 4.0,
+                step: 0.01,
+            },
             default_enabled: false,
-            default_value: None,
-            label_zh: "4:3 移除黑边",
-            description_zh: "配合 4:3 分辨率使用，移除黑边。",
+            default_value: Some(OptionValue::Float(1.0)),
+            label_zh: "画面比例（最小）",
+            description_zh:
+                "自定义画面比例下限。常用：4:3≈1.33，16:9≈1.78，21:9≈2.33，32:9≈3.56。配合 4:3 分辨率可移除黑边。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
+            id: "fov_scale",
+            category: "display",
+            kind: OptionKind::Float {
+                flag: "+cl_fovScale",
+                min: 1.0,
+                max: 1.71,
+                step: 0.01,
+            },
+            default_enabled: false,
+            default_value: Some(OptionValue::Float(1.7)),
+            label_zh: "FOV 缩放",
+            description_zh:
+                "视野缩放系数。1.0 = 默认 70 度，1.7 ≈ 120 度。视野更大但可能晕 3D。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
@@ -120,54 +204,30 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
-
-        // ===== 窗口模式 =====
         OptionEntry {
-            id: "fullscreen",
-            category: "window",
-            kind: OptionKind::Toggle { args: &["-fullscreen"] },
+            id: "showpos",
+            category: "display",
+            kind: OptionKind::Toggle { args: &["+cl_showpos", "1"] },
             default_enabled: false,
             default_value: None,
-            label_zh: "全屏",
-            description_zh: "以全屏模式启动游戏。",
-            risk: RiskLevel::None,
-            conflicts_with: &["window", "noborder"],
-        },
-        OptionEntry {
-            id: "window",
-            category: "window",
-            kind: OptionKind::Toggle { args: &["-window"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "窗口",
-            description_zh: "以窗口模式启动游戏。",
-            risk: RiskLevel::None,
-            conflicts_with: &["fullscreen"],
-        },
-        OptionEntry {
-            id: "noborder",
-            category: "window",
-            kind: OptionKind::Toggle { args: &["-noborder"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "无边框",
-            description_zh: "以无边框窗口启动（建议同时勾选「窗口」）。",
-            risk: RiskLevel::None,
-            conflicts_with: &["fullscreen"],
-        },
-
-        // ===== 性能与优先级 =====
-        OptionEntry {
-            id: "high_priority",
-            category: "performance",
-            kind: OptionKind::Toggle { args: &["-high"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "高线程优先级",
-            description_zh: "将游戏线程优先级设置为高。",
+            label_zh: "显示位置/角度/速度",
+            description_zh: "在游戏中显示名称、位置、角度和速度。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
+        OptionEntry {
+            id: "showfps",
+            category: "display",
+            kind: OptionKind::Toggle { args: &["+cl_showfps", "1"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "显示 FPS / 网络",
+            description_zh: "显示性能与网络参数。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+
+        // ===== 性能与帧率 =====
         OptionEntry {
             id: "fps_max",
             category: "performance",
@@ -191,6 +251,17 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             conflicts_with: &[],
         },
         OptionEntry {
+            id: "high_priority",
+            category: "performance",
+            kind: OptionKind::Toggle { args: &["-high"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "高线程优先级",
+            description_zh: "将游戏线程优先级设置为高。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
             id: "no_render_on_input_thread",
             category: "performance",
             kind: OptionKind::Toggle { args: &["-no_render_on_input_thread"] },
@@ -202,113 +273,48 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             conflicts_with: &["fps_max"],
         },
 
-        // ===== 鼠标输入 =====
+        // ===== 操作与输入 =====
+        OptionEntry {
+            id: "raw_input",
+            category: "input",
+            kind: OptionKind::Toggle { args: &["+m_rawinput", "1"] },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "原始鼠标输入",
+            description_zh: "直接读取鼠标硬件信号，不走 Windows 加速。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
         OptionEntry {
             id: "noforcemspd",
-            category: "mouse",
+            category: "input",
             kind: OptionKind::Toggle { args: &["-noforcemspd"] },
             default_enabled: false,
             default_value: None,
             label_zh: "保留鼠标速度",
-            description_zh: "使用原始鼠标速度。",
+            description_zh: "不强制使用系统鼠标速度。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
         OptionEntry {
             id: "noforcemaccel",
-            category: "mouse",
+            category: "input",
             kind: OptionKind::Toggle { args: &["-noforcemaccel"] },
             default_enabled: false,
             default_value: None,
             label_zh: "保留加速曲线",
-            description_zh: "保留原始加速曲线。",
+            description_zh: "不强制启用鼠标加速度。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
         OptionEntry {
             id: "noforcemparms",
-            category: "mouse",
+            category: "input",
             kind: OptionKind::Toggle { args: &["-noforcemparms"] },
             default_enabled: false,
             default_value: None,
             label_zh: "保留自定义鼠标参数",
-            description_zh: "不覆盖用户自定义参数。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-
-        // ===== 音频 =====
-        OptionEntry {
-            id: "miles_channels",
-            category: "audio",
-            kind: OptionKind::Enum {
-                flag: "+miles_channels",
-                choices: &[
-                    ("2", "立体声 (2)"),
-                    ("8", "7.1 声道 (8)"),
-                ],
-            },
-            default_enabled: false,
-            default_value: Some(OptionValue::Enum("2".into())),
-            label_zh: "声道数",
-            description_zh: "音频输出声道。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-
-        // ===== 调试与 HUD =====
-        OptionEntry {
-            id: "showpos",
-            category: "hud",
-            kind: OptionKind::Toggle { args: &["+cl_showpos", "1"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "显示位置/角度/速度",
-            description_zh: "在游戏中显示名称、位置、角度和速度。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-        OptionEntry {
-            id: "showfps",
-            category: "hud",
-            kind: OptionKind::Toggle { args: &["+cl_showfps", "1"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "显示 FPS / 网络",
-            description_zh: "显示性能与网络参数。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-        OptionEntry {
-            id: "skip_intro",
-            category: "hud",
-            kind: OptionKind::Toggle { args: &["-novid"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "跳过开场动画",
-            description_zh: "省去开场视频，约快 5 秒。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-        OptionEntry {
-            id: "fov_scale",
-            category: "hud",
-            kind: OptionKind::Toggle { args: &["+cl_fovScale", "1.7"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "强制 120 FOV",
-            description_zh: "强制更宽的视野。",
-            risk: RiskLevel::None,
-            conflicts_with: &[],
-        },
-        OptionEntry {
-            id: "softened_locale",
-            category: "hud",
-            kind: OptionKind::Toggle { args: &["+cl_is_softened_locale", "1"] },
-            default_enabled: false,
-            default_value: None,
-            label_zh: "击杀血雾改红光",
-            description_zh: "中文版默认效果。",
+            description_zh: "不强制使用系统鼠标参数。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },
@@ -320,15 +326,39 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             kind: OptionKind::Enum {
                 flag: "+miles_language",
                 choices: &[
-                    ("mandarin", "中文配音"),
-                    ("english",  "英文配音"),
-                    ("japanese", "日文配音（需额外语音包）"),
+                    ("mandarin", "普通话"),
+                    ("english",  "英语"),
+                    ("japanese", "日语（需额外语音包）"),
+                    ("french",   "法语"),
+                    ("german",   "德语"),
+                    ("italian",  "意大利语"),
+                    ("korean",   "韩语"),
+                    ("polish",   "波兰语"),
+                    ("russian",  "俄语"),
+                    ("spanish",  "西班牙语"),
                 ],
             },
             default_enabled: false,
             default_value: Some(OptionValue::Enum("english".into())),
             label_zh: "配音语言",
-            description_zh: "更改游戏内角色配音。",
+            description_zh: "更改游戏内角色配音（不影响 UI 语言）。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
+            id: "miles_channels",
+            category: "voice",
+            kind: OptionKind::Enum {
+                flag: "+miles_channels",
+                choices: &[
+                    ("2", "立体声 (2)"),
+                    ("8", "7.1 声道 (8)"),
+                ],
+            },
+            default_enabled: false,
+            default_value: Some(OptionValue::Enum("2".into())),
+            label_zh: "声道数",
+            description_zh: "音频输出声道。",
             risk: RiskLevel::None,
             conflicts_with: &[],
         },

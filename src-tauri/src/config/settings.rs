@@ -74,11 +74,17 @@ pub struct PerChannelState {
 fn default_schema() -> u32 {
     CURRENT_SCHEMA
 }
+/// Default mirror config URL. Points at the community CN mirror so users can
+/// install out-of-the-box without first hunting down a working URL. Users
+/// behind a different mirror are still free to override this in settings.
+pub const DEFAULT_MIRROR_CONFIG_URL: &str = "https://cdn-r5r-org.sleep0.de/launcher/config.json";
+
+/// Official R5Reloaded config URL — used as a connectivity-test target when
+/// the user hasn't filled in any mirror URL yet.
+pub const OFFICIAL_CONFIG_URL: &str = "https://cdn.r5r.org/launcher/config.json";
+
 fn default_root_config_url() -> String {
-    // Empty by default — the user MUST set their mirror URL in settings before
-    // installing. We don't ship a hardcoded fallback because the whole point of
-    // this launcher is that the official URL doesn't work in CN.
-    String::new()
+    DEFAULT_MIRROR_CONFIG_URL.to_string()
 }
 fn default_concurrency() -> u32 {
     4

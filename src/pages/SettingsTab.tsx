@@ -1,11 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useSettings } from "../hooks/useSettings";
-import { ProxyMode, ProxyTestResult } from "../ipc/types";
+import { DetectedInstall, ProxyMode, ProxyTestResult } from "../ipc/types";
 import { setProxyMode, testProxy } from "../ipc/proxy";
 import { validateInstallPath, openLogFolder } from "../ipc/settings";
+import { detectExistingR5R } from "../ipc/detect";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+
+const CUSTOM_OPTION = "__custom__";
+
+/**
+ * Walk up `detectedPath` looking for the `R5R Library` segment and return its
+ * parent — that's what we need to put into `settings.library_root`. The
+ * detected path itself is the *channel* dir (e.g. `C:\R5R Library\LIVE`).
+ */
+function detectedToLibraryRoot(detectedPath: string): string {
+  const segs = detectedPath.split(/[\\/]/);
+  for (let i = segs.length - 1; i > 0; i--) {
+    if (segs[i].toLowerCase() === "r5r library") {
+      const parent = segs.slice(0, i).join("\\");
+      // `C:` alone means "current dir on C drive"; we want the actual root.
+      return /^[a-z]:$/i.test(parent) ? parent + "\\" : parent;
+    }
+  }
+  // Detected path doesn't include `R5R Library` (e.g. shortcut points
+  // somewhere odd) — fall back to using it directly.
+  return detectedPath;
+}
+
+interface DetectedRoot {
+  libraryRoot: string;
+  detectedPath: string;
+  channel: string | null;
+  source: DetectedInstall["source"];
+}
 
 export function SettingsTab() {
   const { settings, loading, error, update } = useSettings();
@@ -13,12 +42,16 @@ export function SettingsTab() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [rootConfigUrl, setRootConfigUrl] = useState("");
   const [libraryRoot, setLibraryRoot] = useState("");
+  // Which row in the install-location dropdown is selected. Either a detected
+  // library_root, or `__custom__` to enable the manual text input.
+  const [installSelection, setInstallSelection] = useState<string>(CUSTOM_OPTION);
   const [concurrency, setConcurrency] = useState(4);
   const [pathErrors, setPathErrors] = useState<string[]>([]);
   const [pathWarnings, setPathWarnings] = useState<string[]>([]);
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
 
   // Hydrate local form state from settings on first load.
   useEffect(() => {
@@ -31,6 +64,57 @@ export function SettingsTab() {
     setLibraryRoot(settings.library_root);
     setConcurrency(settings.concurrent_downloads);
   }, [settings]);
+
+  // Run detection once so we can offer detected installs as quick-pick options.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await detectExistingR5R();
+        if (!cancelled) setDetected(r);
+      } catch {
+        if (!cancelled) setDetected([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Dedupe detected installs by library_root so two channels under the same
+  // root don't show up as duplicate dropdown entries.
+  const detectedRoots: DetectedRoot[] = useMemo(() => {
+    if (!detected) return [];
+    const seen = new Set<string>();
+    const out: DetectedRoot[] = [];
+    for (const d of detected) {
+      const root = detectedToLibraryRoot(d.path);
+      const key = root.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        libraryRoot: root,
+        detectedPath: d.path,
+        channel: d.channel,
+        source: d.source,
+      });
+    }
+    return out;
+  }, [detected]);
+
+  // Once detection lands, decide whether the saved library_root matches a
+  // detected entry (so the dropdown highlights it) or whether the user is on
+  // a custom path.
+  useEffect(() => {
+    if (detected === null) return;
+    const match = detectedRoots.find(
+      (r) => r.libraryRoot.toLowerCase() === libraryRoot.toLowerCase(),
+    );
+    setInstallSelection(match ? match.libraryRoot : CUSTOM_OPTION);
+    // Only run when detection finishes / settings hydrate; avoid stomping on
+    // the user mid-edit by leaving libraryRoot out of the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detected, settings?.library_root]);
 
   // Live-validate the install path as the user types.
   useEffect(() => {
@@ -70,23 +154,15 @@ export function SettingsTab() {
     return { kind: "custom", url: proxyUrl.trim() };
   };
 
-  const handleSaveProxy = async () => {
-    setBusy("proxy");
-    try {
-      await setProxyMode(buildProxyMode());
-      setSavedAt(Date.now());
-    } catch (e) {
-      alert(`代理设置失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const handleTestProxy = async () => {
     setBusy("test");
     setProxyResult(null);
     try {
-      const r = await testProxy();
+      // Use whatever the user is currently typing in the mirror field — they
+      // shouldn't have to hit Save just to verify a URL works. The backend
+      // falls back to the official R5R URL if both override and saved are
+      // empty, which lets users sanity-check their proxy out of the box.
+      const r = await testProxy(rootConfigUrl.trim() || undefined);
       setProxyResult(r);
     } catch (e) {
       setProxyResult({
@@ -108,14 +184,31 @@ export function SettingsTab() {
     });
     if (typeof picked === "string") {
       setLibraryRoot(picked);
+      setInstallSelection(CUSTOM_OPTION);
     }
   };
 
-  const handleSaveGeneral = async () => {
+  const handleInstallSelect = (value: string) => {
+    setInstallSelection(value);
+    if (value !== CUSTOM_OPTION) {
+      setLibraryRoot(value);
+    }
+  };
+
+  const handleSaveAll = async () => {
     if (pathErrors.length > 0) return;
-    setBusy("general");
+    setBusy("all");
     try {
+      // Apply proxy first so a failed rebuild surfaces before we touch the
+      // rest of the settings file.
+      const nextProxy = buildProxyMode();
+      const proxyChanged =
+        JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
+      if (proxyChanged) {
+        await setProxyMode(nextProxy);
+      }
       await update({
+        proxy_mode: nextProxy,
         root_config_url: rootConfigUrl.trim(),
         library_root: libraryRoot,
         concurrent_downloads: concurrency,
@@ -165,19 +258,15 @@ export function SettingsTab() {
           )}
           <div className="flex gap-2">
             <PrimaryButton
-              variant="primary"
-              onClick={handleSaveProxy}
-              disabled={busy === "proxy"}
-            >
-              {busy === "proxy" ? "应用中…" : "应用代理"}
-            </PrimaryButton>
-            <PrimaryButton
               variant="secondary"
               onClick={handleTestProxy}
               disabled={busy === "test"}
             >
               {busy === "test" ? "测试中…" : "测试连通性"}
             </PrimaryButton>
+            <span className="text-xs text-white/40 self-center">
+              未填写镜像源时会用官方 URL 进行测试。
+            </span>
           </div>
           {proxyResult && (
             <div
@@ -200,11 +289,11 @@ export function SettingsTab() {
         <SectionHeader
           icon="🪞"
           title="镜像源"
-          subtitle="镜像 config.json 的完整 URL（与官方 RemoteConfig 同结构）。"
+          subtitle="镜像 config.json 的完整 URL（与官方 RemoteConfig 同结构）。修改后无需保存即可测试。"
         />
         <input
           type="url"
-          placeholder="https://your-mirror.example.cn/launcher/config.json"
+          placeholder="https://cdn-r5r-org.sleep0.de/launcher/config.json"
           value={rootConfigUrl}
           onChange={(e) => setRootConfigUrl(e.target.value)}
         />
@@ -218,17 +307,44 @@ export function SettingsTab() {
           subtitle={`实际安装目录：${libraryRoot || "<未选择>"}/R5R Library/<频道>/`}
         />
         <div className="space-y-2">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="例如 D:\\Games"
-              value={libraryRoot}
-              onChange={(e) => setLibraryRoot(e.target.value)}
-            />
-            <PrimaryButton variant="secondary" onClick={handlePickFolder}>
-              浏览…
-            </PrimaryButton>
-          </div>
+          <select
+            value={installSelection}
+            onChange={(e) => handleInstallSelect(e.target.value)}
+            className="w-full"
+          >
+            {detectedRoots.map((d) => (
+              <option key={d.libraryRoot} value={d.libraryRoot}>
+                {d.libraryRoot}
+                {d.channel ? ` · ${d.channel}` : ""} · 已检测到的官方安装
+              </option>
+            ))}
+            <option value={CUSTOM_OPTION}>
+              {detectedRoots.length > 0 ? "自定义位置…" : "自定义位置"}
+            </option>
+          </select>
+
+          {installSelection === CUSTOM_OPTION && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="例如 D:\\Games"
+                value={libraryRoot}
+                onChange={(e) => setLibraryRoot(e.target.value)}
+              />
+              <PrimaryButton variant="secondary" onClick={handlePickFolder}>
+                浏览…
+              </PrimaryButton>
+            </div>
+          )}
+
+          {detected !== null && detectedRoots.length === 0 && (
+            <div className="text-xs text-white/40">
+              未检测到已有安装
+              {navigator.userAgent.includes("Mac") && "（macOS 不支持检测）"}
+              ，请手动填写。
+            </div>
+          )}
+
           {pathErrors.map((e, i) => (
             <div
               key={`err-${i}`}
@@ -278,7 +394,7 @@ export function SettingsTab() {
         </div>
       </GlassCard>
 
-      {/* 保存 */}
+      {/* 保存全部 */}
       <div className="sticky bottom-0 -mx-6 px-6 py-3 bg-gradient-to-t from-[#0f1216] to-transparent flex items-center justify-end gap-3">
         {savedAt && (
           <div className="text-xs text-emerald-300">已保存 ✓</div>
@@ -286,10 +402,10 @@ export function SettingsTab() {
         <PrimaryButton
           variant="primary"
           size="lg"
-          onClick={handleSaveGeneral}
-          disabled={busy === "general" || pathErrors.length > 0}
+          onClick={handleSaveAll}
+          disabled={busy === "all" || pathErrors.length > 0}
         >
-          {busy === "general" ? "保存中…" : "保存全部"}
+          {busy === "all" ? "保存中…" : "保存全部"}
         </PrimaryButton>
       </div>
     </div>

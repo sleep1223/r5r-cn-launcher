@@ -33,6 +33,16 @@ pub fn compose_launch_args(selection: &LaunchOptionSelection) -> Vec<String> {
                 out.push((*flag).to_string());
                 out.push(v.to_string());
             }
+            OptionKind::Float { flag, .. } => {
+                let v = match value {
+                    Some(OptionValue::Float(n)) => n,
+                    _ => continue,
+                };
+                out.push((*flag).to_string());
+                // `format!("{}", 1.7_f64)` yields "1.7" — short, exact, no
+                // scientific notation in the ranges we deal with (~0.5 .. 5.0).
+                out.push(format!("{}", v));
+            }
             OptionKind::IntPair { x_flag, y_flag } => {
                 let (w, h) = match value {
                     Some(OptionValue::IntPair(w, h)) => (w, h),

@@ -72,6 +72,7 @@ export interface RemoteConfig {
 export type OptionKind =
   | { type: "toggle"; args: string[] }
   | { type: "int"; flag: string; min: number; max: number }
+  | { type: "float"; flag: string; min: number; max: number; step: number }
   | { type: "int_pair"; x_flag: string; y_flag: string }
   | { type: "enum"; flag: string; choices: [string, string][] }
   | { type: "string"; flag: string; placeholder: string };
@@ -79,6 +80,7 @@ export type OptionKind =
 export type OptionValue =
   | { type: "bool"; value: boolean }
   | { type: "int"; value: number }
+  | { type: "float"; value: number }
   | { type: "int_pair"; value: [number, number] }
   | { type: "enum"; value: string }
   | { type: "string"; value: string };

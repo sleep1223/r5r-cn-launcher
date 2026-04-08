@@ -51,9 +51,16 @@ pub fn validate_install_path(path: String) -> AppResult<PathValidation> {
         warnings.push("路径包含空格，部分启动项可能解析异常".into());
     }
 
+    // Only warn for the *system* Program Files — i.e. one on the C: drive.
+    // A `D:\Program Files` directory is just a folder name and doesn't trigger
+    // the Windows admin/UAC requirement.
     let lower = path.to_ascii_lowercase();
-    if lower.contains("\\program files") || lower.contains("/program files") {
-        warnings.push("安装在 Program Files 下需要管理员权限，建议改用其他位置".into());
+    let is_on_c_drive = lower.starts_with("c:\\") || lower.starts_with("c:/");
+    let is_in_program_files =
+        lower.contains("\\program files") || lower.contains("/program files");
+    if is_on_c_drive && is_in_program_files {
+        warnings
+            .push("安装在 C 盘 Program Files 下需要管理员权限，建议改用其他位置".into());
     }
 
     let normalized = if errors.is_empty() {

@@ -1,4 +1,5 @@
-use crate::error::{AppError, AppResult};
+use crate::config::OFFICIAL_CONFIG_URL;
+use crate::error::AppResult;
 use crate::events::EVT_PROXY_CHANGED;
 use crate::proxy::ProxyMode;
 use crate::state::LauncherState;
@@ -30,12 +31,30 @@ pub struct ProxyTestResult {
     pub error: Option<String>,
 }
 
+/// Test the current HTTP client (i.e. the active proxy mode) by issuing a HEAD
+/// request against a config URL. The caller may pass `override_url` to test the
+/// URL they're currently typing without having to save it first; otherwise we
+/// fall back to the saved mirror URL, and if that's empty too we fall back to
+/// the official R5R config URL — handy when the user is verifying that their
+/// proxy can reach the official endpoint before configuring a mirror.
 #[tauri::command]
-pub async fn test_proxy(state: State<'_, LauncherState>) -> AppResult<ProxyTestResult> {
-    let url = state.settings.read().root_config_url.clone();
-    if url.is_empty() {
-        return Err(AppError::settings("尚未配置镜像 config.json 地址"));
-    }
+pub async fn test_proxy(
+    state: State<'_, LauncherState>,
+    override_url: Option<String>,
+) -> AppResult<ProxyTestResult> {
+    let url = override_url
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let saved = state.settings.read().root_config_url.trim().to_string();
+            if saved.is_empty() {
+                None
+            } else {
+                Some(saved)
+            }
+        })
+        .unwrap_or_else(|| OFFICIAL_CONFIG_URL.to_string());
+
     let client = state.http.read().await.client();
     let started = Instant::now();
     let res = client.head(&url).send().await;

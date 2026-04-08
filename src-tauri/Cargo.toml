@@ -1,6 +1,6 @@
 [package]
 name = "launcher-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "R5R 中国镜像启动器"
 authors = ["you"]
 edition = "2021"

@@ -270,6 +270,22 @@ function renderInput(
         />
       );
     }
+    case "float": {
+      const v = value?.type === "float" ? value.value : entry.kind.min;
+      return (
+        <input
+          type="number"
+          min={entry.kind.min}
+          max={entry.kind.max}
+          step={entry.kind.step}
+          value={v}
+          onChange={(e) =>
+            onValue({ type: "float", value: Number(e.target.value) })
+          }
+          className="!w-32"
+        />
+      );
+    }
     case "int_pair": {
       const [w, h] =
         value?.type === "int_pair" ? value.value : [1920, 1080];

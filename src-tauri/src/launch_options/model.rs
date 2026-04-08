@@ -38,6 +38,15 @@ pub enum OptionKind {
         min: i32,
         max: i32,
     },
+    /// Single decimal value (FOV scale, letterbox aspect ratio, etc.).
+    /// Emits `[flag, value]` with the value formatted via `format!("{}")`,
+    /// which strips trailing zeros (`1.70 → "1.7"`).
+    Float {
+        flag: &'static str,
+        min: f64,
+        max: f64,
+        step: f64,
+    },
     /// Resolution-style: emits `[x_flag, width, y_flag, height]`.
     IntPair {
         x_flag: &'static str,
@@ -60,6 +69,7 @@ pub enum OptionKind {
 pub enum OptionValue {
     Bool(bool),
     Int(i32),
+    Float(f64),
     IntPair(i32, i32),
     Enum(String),
     String(String),
