@@ -92,3 +92,17 @@ pub fn open_log_folder(app: AppHandle) -> AppResult<()> {
         .map_err(|e| AppError::other(format!("打开日志目录失败: {}", e)))?;
     Ok(())
 }
+
+/// Open an arbitrary external URL in the user's default browser. Routed
+/// through Rust so we don't need to grant the frontend a generic
+/// `opener:allow-open-url` capability.
+#[tauri::command]
+pub fn open_external_url(app: AppHandle, url: String) -> AppResult<()> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(AppError::other("仅允许打开 http/https 链接".to_string()));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| AppError::other(format!("打开链接失败: {}", e)))?;
+    Ok(())
+}

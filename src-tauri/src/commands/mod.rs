@@ -1,4 +1,6 @@
+pub mod accelerator;
 pub mod config;
+pub mod dashboard;
 pub mod detect;
 pub mod install;
 pub mod launch;

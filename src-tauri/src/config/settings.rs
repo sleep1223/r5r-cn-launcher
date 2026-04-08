@@ -1,3 +1,4 @@
+use crate::dashboard::DEFAULT_DASHBOARD_API_URL;
 use crate::error::{AppError, AppResult};
 use crate::proxy::ProxyMode;
 use serde::{Deserialize, Serialize};
@@ -6,6 +7,18 @@ use std::path::{Path, PathBuf};
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const CURRENT_SCHEMA: u32 = 1;
+
+/// How updates resolve mismatched files. `Verify` walks the manifest and
+/// re-downloads anything whose SHA-256 doesn't match — slow but always
+/// correct. `Patch` (TODO) applies binary patches from the dashboard's
+/// `patches[]`, falling back to `Verify` when no patch path covers the gap.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateStrategy {
+    #[default]
+    Verify,
+    Patch,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherSettings {
@@ -41,6 +54,15 @@ pub struct LauncherSettings {
     /// user is picking a new install location.
     #[serde(default)]
     pub last_known_official_install_path: Option<String>,
+
+    /// Community dashboard endpoint (announcement / rules / patch metadata).
+    #[serde(default = "default_dashboard_api_url")]
+    pub dashboard_api_url: String,
+
+    /// How "更新" resolves outdated files (校验 vs. 补丁包). Defaults to
+    /// `Verify` because patches aren't wired through the pipeline yet.
+    #[serde(default)]
+    pub update_strategy: UpdateStrategy,
 }
 
 impl Default for LauncherSettings {
@@ -55,6 +77,8 @@ impl Default for LauncherSettings {
             channels: HashMap::new(),
             launch_option_selection: serde_json::Value::Null,
             last_known_official_install_path: None,
+            dashboard_api_url: default_dashboard_api_url(),
+            update_strategy: UpdateStrategy::default(),
         }
     }
 }
@@ -88,6 +112,9 @@ fn default_root_config_url() -> String {
 }
 fn default_concurrency() -> u32 {
     4
+}
+fn default_dashboard_api_url() -> String {
+    DEFAULT_DASHBOARD_API_URL.to_string()
 }
 
 impl LauncherSettings {

@@ -12,6 +12,8 @@ export interface PerChannelState {
   installed_languages: string[];
 }
 
+export type UpdateStrategy = "verify" | "patch";
+
 export interface LauncherSettings {
   schema_version: number;
   proxy_mode: ProxyMode;
@@ -22,6 +24,38 @@ export interface LauncherSettings {
   channels: Record<string, PerChannelState>;
   launch_option_selection: unknown;
   last_known_official_install_path: string | null;
+  dashboard_api_url: string;
+  update_strategy: UpdateStrategy;
+}
+
+// ===== Community dashboard =====
+
+export interface DashboardPatch {
+  from_version: string;
+  to_version: string;
+  url: string;
+}
+
+export interface DashboardAnnouncement {
+  title: string;
+  content: string;
+}
+
+export interface DashboardRule {
+  icon: string;
+  text: string;
+}
+
+export interface DashboardConfig {
+  offline_package_url: string;
+  docs_url: string;
+  launcher_version: string;
+  launcher_update_url: string;
+  force_update: boolean;
+  game_version: string;
+  patches: DashboardPatch[];
+  announcement: DashboardAnnouncement;
+  rules: DashboardRule[];
 }
 
 export interface PathValidation {
@@ -69,12 +103,20 @@ export interface RemoteConfig {
 
 // ===== Launch options =====
 
+export interface EnumArgChoice {
+  value: string;
+  label_zh: string;
+  args: string[];
+}
+
 export type OptionKind =
-  | { type: "toggle"; args: string[] }
+  | { type: "toggle"; args: string[]; is_combo: boolean }
   | { type: "int"; flag: string; min: number; max: number }
   | { type: "float"; flag: string; min: number; max: number; step: number }
   | { type: "int_pair"; x_flag: string; y_flag: string }
   | { type: "enum"; flag: string; choices: [string, string][] }
+  | { type: "enum_args"; choices: EnumArgChoice[] }
+  | { type: "fov_degrees"; flag: string; min: number; max: number; base: number }
   | { type: "string"; flag: string; placeholder: string };
 
 export type OptionValue =

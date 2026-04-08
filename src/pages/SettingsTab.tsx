@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useSettings } from "../hooks/useSettings";
-import { DetectedInstall, ProxyMode, ProxyTestResult } from "../ipc/types";
+import {
+  DetectedInstall,
+  ProxyMode,
+  ProxyTestResult,
+  UpdateStrategy,
+} from "../ipc/types";
 import { setProxyMode, testProxy } from "../ipc/proxy";
 import { validateInstallPath, openLogFolder } from "../ipc/settings";
 import { detectExistingR5R } from "../ipc/detect";
@@ -53,6 +58,8 @@ export function SettingsTab() {
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
   const [rootConfigUrl, setRootConfigUrl] = useState("");
+  const [dashboardApiUrl, setDashboardApiUrl] = useState("");
+  const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
   // library_root, or `__custom__` to enable the manual text input.
@@ -79,6 +86,8 @@ export function SettingsTab() {
       settings.proxy_mode.kind === "custom" ? settings.proxy_mode.url : "",
     );
     setRootConfigUrl(settings.root_config_url);
+    setDashboardApiUrl(settings.dashboard_api_url);
+    setUpdateStrategy(settings.update_strategy);
     setLibraryRoot(settings.library_root);
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
@@ -223,18 +232,24 @@ export function SettingsTab() {
 
     const nextProxy = buildProxyMode();
     const trimmedConfigUrl = rootConfigUrl.trim();
+    const trimmedDashboardUrl = dashboardApiUrl.trim();
 
     const proxyChanged =
       JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
     const configUrlChanged = trimmedConfigUrl !== settings.root_config_url;
+    const dashboardUrlChanged =
+      trimmedDashboardUrl !== settings.dashboard_api_url;
     const libraryRootChanged = libraryRoot !== settings.library_root;
     const concurrencyChanged = concurrency !== settings.concurrent_downloads;
+    const updateStrategyChanged = updateStrategy !== settings.update_strategy;
 
     if (
       !proxyChanged &&
       !configUrlChanged &&
+      !dashboardUrlChanged &&
       !libraryRootChanged &&
-      !concurrencyChanged
+      !concurrencyChanged &&
+      !updateStrategyChanged
     ) {
       return;
     }
@@ -251,8 +266,10 @@ export function SettingsTab() {
         await update({
           proxy_mode: nextProxy,
           root_config_url: trimmedConfigUrl,
+          dashboard_api_url: trimmedDashboardUrl,
           library_root: libraryRoot,
           concurrent_downloads: concurrency,
+          update_strategy: updateStrategy,
         });
         setSavedAt(Date.now());
       } catch (e) {
@@ -264,7 +281,16 @@ export function SettingsTab() {
 
     return () => window.clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proxyKind, proxyUrl, rootConfigUrl, libraryRoot, concurrency, pathErrors.length]);
+  }, [
+    proxyKind,
+    proxyUrl,
+    rootConfigUrl,
+    dashboardApiUrl,
+    updateStrategy,
+    libraryRoot,
+    concurrency,
+    pathErrors.length,
+  ]);
 
   const handleReset = async () => {
     setBusy("reset");
@@ -353,6 +379,51 @@ export function SettingsTab() {
           value={rootConfigUrl}
           onChange={(e) => setRootConfigUrl(e.target.value)}
         />
+      </GlassCard>
+
+      {/* 数据面板 */}
+      <GlassCard>
+        <SectionHeader
+          icon="📊"
+          title="社区数据面板"
+          subtitle="公告、规则、补丁等社区元数据接口（首页会读取这里的内容）。"
+        />
+        <input
+          type="url"
+          placeholder="https://r5.sleep0.de/api/v1/r5/launcher/config"
+          value={dashboardApiUrl}
+          onChange={(e) => setDashboardApiUrl(e.target.value)}
+        />
+      </GlassCard>
+
+      {/* 更新方式 */}
+      <GlassCard>
+        <SectionHeader
+          icon="↻"
+          title="更新方式"
+          subtitle="点击「更新」时如何处理已变化的文件。默认使用「校验」对所有文件做 SHA-256 校验后按需下载。"
+        />
+        <div className="flex gap-2">
+          {(["verify", "patch"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setUpdateStrategy(s)}
+              className={`flex-1 py-2 rounded-lg border text-sm transition-all ${
+                updateStrategy === s
+                  ? "border-blue-400/60 bg-blue-400/10 text-white"
+                  : "border-white/10 text-white/60 hover:bg-white/5"
+              }`}
+            >
+              {s === "verify" ? "校验（推荐）" : "补丁包"}
+            </button>
+          ))}
+        </div>
+        {updateStrategy === "patch" && (
+          <div className="text-xs text-amber-300 mt-2">
+            注：补丁包路径暂未实现，当前会自动回退到完整校验。
+          </div>
+        )}
       </GlassCard>
 
       {/* 安装位置 */}

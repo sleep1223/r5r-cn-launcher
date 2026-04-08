@@ -1,5 +1,5 @@
 use crate::config::fetch::{fetch_channel_version, fetch_remote_config};
-use crate::config::{Channel, RemoteConfig};
+use crate::config::{Channel, RemoteConfig, UpdateStrategy};
 use crate::download::chunk::download_chunked;
 use crate::download::progress::ProgressAggregator;
 use crate::download::retry::RetryPolicy;
@@ -78,15 +78,24 @@ pub async fn run_install(
     emit_log(&app, &job_id, LogLevel::Info, format!("开始安装频道 {}", channel_name));
 
     // 1. Resolve config + channel.
-    let (root_url, library_root, languages_wanted, concurrent_downloads) = {
+    let (root_url, library_root, languages_wanted, concurrent_downloads, update_strategy) = {
         let s = state.settings.read();
         (
             s.root_config_url.clone(),
             s.library_root.clone(),
             vec!["schinese".to_string()],
             s.concurrent_downloads.max(1),
+            s.update_strategy,
         )
     };
+    if mode == InstallMode::Update && update_strategy == UpdateStrategy::Patch {
+        emit_log(
+            &app,
+            &job_id,
+            LogLevel::Warn,
+            "当前更新策略为「补丁包」，但补丁路径暂未实现，回退到完整校验",
+        );
+    }
     if root_url.is_empty() {
         return Err(AppError::settings("尚未配置镜像 config.json 地址"));
     }

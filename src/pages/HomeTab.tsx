@@ -5,8 +5,12 @@ import { InstallProgress } from "../components/InstallProgress";
 import { useSettings } from "../hooks/useSettings";
 import { useLaunchExited } from "../hooks/useLaunchExited";
 import { useInstallLog, useInstallProgress } from "../hooks/useInstallProgress";
+import { useAccelerators } from "../hooks/useAccelerators";
 import { detectExistingR5R } from "../ipc/detect";
 import { fetchRemoteConfig } from "../ipc/config";
+import { fetchDashboardConfig } from "../ipc/dashboard";
+import { openExternalUrl } from "../ipc/settings";
+import { detectAccelerators } from "../ipc/accelerator";
 import { launchGame } from "../ipc/launch";
 import {
   cancelInstall,
@@ -17,11 +21,12 @@ import {
   startUpdate,
 } from "../ipc/install";
 import {
+  DashboardConfig,
   DetectedInstall,
   LaunchOptionSelection,
   RemoteConfig,
 } from "../ipc/types";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
 
 type Action = "install" | "update" | "play" | "blocked";
 
@@ -37,9 +42,12 @@ export function HomeTab() {
   const [importError, setImportError] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const exited = useLaunchExited();
   const progress = useInstallProgress();
   const installLogs = useInstallLog(activeJobId);
+  const accelerators = useAccelerators();
 
   // Run detection once on mount.
   useEffect(() => {
@@ -52,6 +60,32 @@ export function HomeTab() {
       }
     })();
   }, []);
+
+  // Pull the community dashboard whenever the dashboard URL changes (it lives
+  // in settings, so changing it from the SettingsTab triggers a refetch).
+  useEffect(() => {
+    if (!settings?.dashboard_api_url) {
+      setDashboard(null);
+      setDashboardError(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setDashboardError(null);
+      try {
+        const d = await fetchDashboardConfig();
+        if (!cancelled) setDashboard(d);
+      } catch (e) {
+        if (!cancelled) {
+          setDashboardError(e instanceof Error ? e.message : String(e));
+          setDashboard(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings?.dashboard_api_url]);
 
   // Fetch the remote config whenever the URL changes.
   useEffect(() => {
@@ -155,6 +189,25 @@ export function HomeTab() {
           break;
         }
         case "play": {
+          // Re-check accelerators *right before* launch — the cached hook
+          // state might be 15s stale, and the user may have started a VPN
+          // since then. Cheap (~10ms) so it's fine on the hot path.
+          const fresh = await detectAccelerators().catch(() => []);
+          if (fresh.length > 0) {
+            const names = fresh.map((a) => a.name).join("、");
+            const ok = await ask(
+              `检测到正在运行的加速器：${names}\n\n` +
+                `社区服走的是镜像直连，加速器会把游戏流量绕到错误的节点，导致丢包、卡顿、断线。\n\n` +
+                `建议先关闭加速器再启动游戏。是否仍要继续？`,
+              {
+                title: "检测到加速器",
+                kind: "warning",
+                okLabel: "仍要启动",
+                cancelLabel: "取消",
+              },
+            );
+            if (!ok) break;
+          }
           const sel: LaunchOptionSelection =
             (settings.launch_option_selection as LaunchOptionSelection) ?? {
               items: {},
@@ -306,6 +359,11 @@ export function HomeTab() {
                     远端：{remoteVersion}
                   </span>
                 )}
+                {dashboard?.game_version && (
+                  <span className="text-xs text-blue-300">
+                    社区服版本：{dashboard.game_version}
+                  </span>
+                )}
               </div>
             )}
 
@@ -341,11 +399,13 @@ export function HomeTab() {
                 <PrimaryButton variant="secondary" onClick={handleImportZip}>
                   导入离线包 zip
                 </PrimaryButton>
-                {installed && (
-                  <PrimaryButton variant="secondary" onClick={handleRepair}>
-                    校验并修复
-                  </PrimaryButton>
-                )}
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={handleRepair}
+                  disabled={!settings?.selected_channel || !settings?.library_root}
+                >
+                  校验
+                </PrimaryButton>
               </div>
               {launchableDir && action === "play" && !installed && (
                 <div className="text-xs text-white/40">
@@ -370,6 +430,93 @@ export function HomeTab() {
           )}
         </div>
       </GlassCard>
+
+      {accelerators.length > 0 && (
+        <GlassCard className="border-amber-400/30 bg-amber-500/[0.06]">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl leading-none">⚠</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-amber-200">
+                检测到加速器正在运行
+              </div>
+              <div className="text-xs text-amber-100/80 mt-1 leading-relaxed">
+                社区服走镜像直连，开启加速器会把游戏流量绕到错误的节点，
+                <span className="font-semibold">导致丢包、卡顿、甚至断线</span>
+                。建议在启动游戏前先关闭加速器。
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {accelerators.map((a) => (
+                  <span
+                    key={`${a.name}-${a.pid}`}
+                    className="text-[11px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-200 font-mono"
+                  >
+                    {a.name}
+                    <span className="text-amber-300/50 ml-1">
+                      ({a.process_name})
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {dashboardError && (
+        <GlassCard>
+          <div className="text-xs text-amber-300">
+            社区服数据面板暂不可用：{dashboardError}
+          </div>
+        </GlassCard>
+      )}
+
+      {dashboard?.announcement &&
+        (dashboard.announcement.title || dashboard.announcement.content) && (
+          <GlassCard>
+            <SectionHeader
+              icon="📣"
+              title={dashboard.announcement.title || "公告"}
+            />
+            <div className="text-sm text-white/75 whitespace-pre-wrap leading-relaxed">
+              {dashboard.announcement.content}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {dashboard.docs_url && (
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={() => openExternalUrl(dashboard.docs_url)}
+                >
+                  📖 查看文档
+                </PrimaryButton>
+              )}
+              {dashboard.offline_package_url && (
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={() => openExternalUrl(dashboard.offline_package_url)}
+                >
+                  📦 离线包下载
+                </PrimaryButton>
+              )}
+            </div>
+          </GlassCard>
+        )}
+
+      {dashboard && dashboard.rules.length > 0 && (
+        <GlassCard>
+          <SectionHeader icon="📜" title="服务器规则" />
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {dashboard.rules.map((r, i) => (
+              <li
+                key={`${r.text}-${i}`}
+                className="text-sm bg-white/5 rounded-lg px-3 py-2 flex items-center gap-2"
+              >
+                <span className="text-base leading-none">{r.icon}</span>
+                <span className="text-white/80">{r.text}</span>
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      )}
 
       <GlassCard>
         <SectionHeader

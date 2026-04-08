@@ -5,5 +5,6 @@ pub mod settings;
 
 pub use remote::{Channel, RemoteConfig};
 pub use settings::{
-    LauncherSettings, PerChannelState, DEFAULT_MIRROR_CONFIG_URL, OFFICIAL_CONFIG_URL,
+    LauncherSettings, PerChannelState, UpdateStrategy, DEFAULT_MIRROR_CONFIG_URL,
+    OFFICIAL_CONFIG_URL,
 };

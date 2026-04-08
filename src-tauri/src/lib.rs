@@ -1,5 +1,7 @@
+pub mod accelerator;
 pub mod commands;
 pub mod config;
+pub mod dashboard;
 pub mod detect;
 pub mod download;
 pub mod error;
@@ -80,6 +82,41 @@ pub fn run() {
             *state.config_dir.write() = config_dir;
             app.manage(state);
 
+            // Background accelerator poller. Scans the running process list
+            // every 15s; if the set of detected accelerators changes (new
+            // one started, or one closed) we emit `accelerator://changed`
+            // so the UI can re-render its warning banner without having to
+            // poll from the frontend. The first scan runs immediately
+            // (`tokio::time::interval`'s first `tick()` is instant).
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use std::time::Duration;
+                    use tauri::Emitter;
+                    let mut last_signature: Vec<String> = Vec::new();
+                    let mut interval = tokio::time::interval(Duration::from_secs(15));
+                    loop {
+                        interval.tick().await;
+                        let found = crate::accelerator::detect();
+                        let mut signature: Vec<String> =
+                            found.iter().map(|d| d.name.clone()).collect();
+                        signature.sort();
+                        if signature != last_signature {
+                            last_signature = signature;
+                            let _ = handle.emit(
+                                crate::events::EVT_ACCELERATOR_CHANGED,
+                                &found,
+                            );
+                            tracing::info!(
+                                target: "accelerator",
+                                "detected accelerators changed: {:?}",
+                                found.iter().map(|d| &d.name).collect::<Vec<_>>()
+                            );
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,11 +124,14 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::validate_install_path,
             commands::settings::open_log_folder,
+            commands::settings::open_external_url,
+            commands::accelerator::detect_accelerators_cmd,
             commands::proxy::set_proxy_mode,
             commands::proxy::test_proxy,
             commands::detect::detect_existing_r5r,
             commands::config::fetch_remote_config_cmd,
             commands::config::get_channel_version,
+            commands::dashboard::fetch_dashboard_config_cmd,
             commands::launch_options::get_launch_option_catalog,
             commands::launch_options::validate_launch_args_cmd,
             commands::launch_options::compose_launch_args_cmd,

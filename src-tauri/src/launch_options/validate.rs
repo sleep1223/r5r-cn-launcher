@@ -138,14 +138,20 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_window_conflict_detected() {
+    fn fps_max_low_input_latency_conflict_detected() {
+        // Window mode is now a single EnumArgs entry (no internal conflict),
+        // so the remaining conflict pair the catalog declares is fps_max +
+        // no_render_on_input_thread. Use that as the regression target.
         let mut items = HashMap::new();
         items.insert(
-            "fullscreen".to_string(),
-            SelectionEntry { enabled: true, value: None },
+            "fps_max".to_string(),
+            SelectionEntry {
+                enabled: true,
+                value: Some(OptionValue::Int(144)),
+            },
         );
         items.insert(
-            "window".to_string(),
+            "no_render_on_input_thread".to_string(),
             SelectionEntry { enabled: true, value: None },
         );
         let sel = LaunchOptionSelection { items };

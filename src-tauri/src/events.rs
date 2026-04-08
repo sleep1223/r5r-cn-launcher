@@ -7,6 +7,7 @@ pub const EVT_INSTALL_PROGRESS: &str = "install://progress";
 pub const EVT_INSTALL_LOG: &str = "install://log";
 pub const EVT_LAUNCH_EXITED: &str = "launch://exited";
 pub const EVT_PROXY_CHANGED: &str = "proxy://changed";
+pub const EVT_ACCELERATOR_CHANGED: &str = "accelerator://changed";
 
 pub type InstallJobId = String;
 
