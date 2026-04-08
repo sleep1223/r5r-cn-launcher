@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "R5R启动器",
+  "productName": "R5R-CN-Launcher",
   "version": "0.1.0",
   "identifier": "com.r5r-cn.launcher",
   "build": {
