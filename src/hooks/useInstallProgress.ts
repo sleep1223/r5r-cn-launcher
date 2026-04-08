@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { ProgressEvent } from "../ipc/types";
+import { InstallLogEvent, ProgressEvent } from "../ipc/types";
 
 /// Subscribes to `install://progress` and exposes the latest snapshot.
 /// `null` until the first event arrives.
@@ -20,6 +20,41 @@ export function useInstallProgress(): ProgressEvent | null {
   }, []);
 
   return progress;
+}
+
+const MAX_LOG_LINES = 500;
+
+/**
+ * Subscribes to `install://log` and accumulates lines for the given job. Lines
+ * for other jobs are ignored. Pass `null` to clear the buffer.
+ */
+export function useInstallLog(jobId: string | null): InstallLogEvent[] {
+  const [logs, setLogs] = useState<InstallLogEvent[]>([]);
+
+  // Reset whenever the active job changes (including back to null).
+  useEffect(() => {
+    setLogs([]);
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    let unlisten: (() => void) | null = null;
+    (async () => {
+      unlisten = await listen<InstallLogEvent>("install://log", (e) => {
+        if (e.payload.job_id !== jobId) return;
+        setLogs((prev) => {
+          const next = prev.length >= MAX_LOG_LINES ? prev.slice(1) : prev.slice();
+          next.push(e.payload);
+          return next;
+        });
+      });
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [jobId]);
+
+  return logs;
 }
 
 export function formatBytes(n: number): string {

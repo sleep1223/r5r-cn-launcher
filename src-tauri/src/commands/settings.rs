@@ -47,10 +47,6 @@ pub fn validate_install_path(path: String) -> AppResult<PathValidation> {
         errors.push("路径不能包含中文或非 ASCII 字符（游戏会拒绝从这种路径启动）".into());
     }
 
-    if path.contains(' ') {
-        warnings.push("路径包含空格，部分启动项可能解析异常".into());
-    }
-
     // Only warn for the *system* Program Files — i.e. one on the C: drive.
     // A `D:\Program Files` directory is just a folder name and doesn't trigger
     // the Windows admin/UAC requirement.

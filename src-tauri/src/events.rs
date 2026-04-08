@@ -4,6 +4,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 pub const EVT_INSTALL_PROGRESS: &str = "install://progress";
+pub const EVT_INSTALL_LOG: &str = "install://log";
 pub const EVT_LAUNCH_EXITED: &str = "launch://exited";
 pub const EVT_PROXY_CHANGED: &str = "proxy://changed";
 
@@ -17,12 +18,32 @@ pub fn new_job_id() -> InstallJobId {
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum InstallPhase {
     Preparing,
+    FetchingConfig,
+    FetchingManifest,
+    Scanning,
     Downloading,
     MergingParts,
     Verifying,
     Complete,
     Failed { reason: String },
     Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallLogEvent {
+    pub job_id: InstallJobId,
+    /// Unix epoch in milliseconds — set in the emitter so the frontend can sort.
+    pub ts_ms: u64,
+    pub level: LogLevel,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
 }
 
 #[derive(Debug, Clone, Serialize)]

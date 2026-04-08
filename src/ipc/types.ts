@@ -134,12 +134,24 @@ export interface LaunchExitedEvent {
 
 export type InstallPhase =
   | { phase: "preparing" }
+  | { phase: "fetching_config" }
+  | { phase: "fetching_manifest" }
+  | { phase: "scanning" }
   | { phase: "downloading" }
   | { phase: "merging_parts" }
   | { phase: "verifying" }
   | { phase: "complete" }
   | { phase: "failed"; reason: string }
   | { phase: "cancelled" };
+
+export type InstallLogLevel = "info" | "warn" | "error";
+
+export interface InstallLogEvent {
+  job_id: string;
+  ts_ms: number;
+  level: InstallLogLevel;
+  message: string;
+}
 
 export interface ProgressEvent {
   job_id: string;

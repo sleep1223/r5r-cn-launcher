@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useSettings } from "../hooks/useSettings";
@@ -36,8 +36,20 @@ interface DetectedRoot {
   source: DetectedInstall["source"];
 }
 
+/**
+ * Render the install root + the fixed `R5R Library/<channel>/` suffix using a
+ * single forward-slash separator regardless of how the user typed the path.
+ * The backend always builds the install dir as `<root>/R5R Library/<CHANNEL>/`
+ * — the user just wants a tidy preview.
+ */
+function formatInstallDirPreview(root: string): string {
+  if (!root) return "<未选择>/R5R Library/<频道>/";
+  const normalized = root.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  return `${normalized}/R5R Library/<频道>/`;
+}
+
 export function SettingsTab() {
-  const { settings, loading, error, update } = useSettings();
+  const { settings, loading, error, update, reload } = useSettings();
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
   const [rootConfigUrl, setRootConfigUrl] = useState("");
@@ -51,9 +63,15 @@ export function SettingsTab() {
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
+  // Tracks whether local state has been hydrated from `settings` at least
+  // once. Until that flips true the autosave effect must not fire — we'd
+  // otherwise immediately overwrite the saved settings with empty defaults.
+  const hydrated = useRef(false);
 
-  // Hydrate local form state from settings on first load.
+  // Hydrate local form state from settings on first load. Also runs after a
+  // manual `重置` (which calls `reload()`) to snap the UI back to disk.
   useEffect(() => {
     if (!settings) return;
     setProxyKind(settings.proxy_mode.kind);
@@ -63,6 +81,7 @@ export function SettingsTab() {
     setRootConfigUrl(settings.root_config_url);
     setLibraryRoot(settings.library_root);
     setConcurrency(settings.concurrent_downloads);
+    hydrated.current = true;
   }, [settings]);
 
   // Run detection once so we can offer detected installs as quick-pick options.
@@ -195,27 +214,64 @@ export function SettingsTab() {
     }
   };
 
-  const handleSaveAll = async () => {
+  // Autosave: whenever any local form state diverges from `settings`, persist
+  // it after a short debounce. Skip until we've hydrated at least once and
+  // until any path errors are resolved (to avoid persisting an invalid path).
+  useEffect(() => {
+    if (!hydrated.current || !settings) return;
     if (pathErrors.length > 0) return;
-    setBusy("all");
-    try {
-      // Apply proxy first so a failed rebuild surfaces before we touch the
-      // rest of the settings file.
-      const nextProxy = buildProxyMode();
-      const proxyChanged =
-        JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
-      if (proxyChanged) {
-        await setProxyMode(nextProxy);
+
+    const nextProxy = buildProxyMode();
+    const trimmedConfigUrl = rootConfigUrl.trim();
+
+    const proxyChanged =
+      JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
+    const configUrlChanged = trimmedConfigUrl !== settings.root_config_url;
+    const libraryRootChanged = libraryRoot !== settings.library_root;
+    const concurrencyChanged = concurrency !== settings.concurrent_downloads;
+
+    if (
+      !proxyChanged &&
+      !configUrlChanged &&
+      !libraryRootChanged &&
+      !concurrencyChanged
+    ) {
+      return;
+    }
+
+    const handle = window.setTimeout(async () => {
+      setBusy("autosave");
+      setSaveError(null);
+      try {
+        // Apply proxy first so a failed rebuild surfaces before we touch the
+        // rest of the settings file.
+        if (proxyChanged) {
+          await setProxyMode(nextProxy);
+        }
+        await update({
+          proxy_mode: nextProxy,
+          root_config_url: trimmedConfigUrl,
+          library_root: libraryRoot,
+          concurrent_downloads: concurrency,
+        });
+        setSavedAt(Date.now());
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(null);
       }
-      await update({
-        proxy_mode: nextProxy,
-        root_config_url: rootConfigUrl.trim(),
-        library_root: libraryRoot,
-        concurrent_downloads: concurrency,
-      });
-      setSavedAt(Date.now());
-    } catch (e) {
-      alert(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+    }, 400);
+
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxyKind, proxyUrl, rootConfigUrl, libraryRoot, concurrency, pathErrors.length]);
+
+  const handleReset = async () => {
+    setBusy("reset");
+    setSaveError(null);
+    try {
+      await reload();
+      setSavedAt(null);
     } finally {
       setBusy(null);
     }
@@ -289,11 +345,11 @@ export function SettingsTab() {
         <SectionHeader
           icon="🪞"
           title="镜像源"
-          subtitle="镜像 config.json 的完整 URL（与官方 RemoteConfig 同结构）。修改后无需保存即可测试。"
+          subtitle="镜像 config.json 的完整 URL（与官方 RemoteConfig 同结构）。修改后会自动保存，无需手动保存。"
         />
         <input
           type="url"
-          placeholder="https://cdn-r5r-org.sleep0.de/launcher/config.json"
+          placeholder="https://cdn.r5r.org/launcher/config.json"
           value={rootConfigUrl}
           onChange={(e) => setRootConfigUrl(e.target.value)}
         />
@@ -304,7 +360,7 @@ export function SettingsTab() {
         <SectionHeader
           icon="📁"
           title="安装位置"
-          subtitle={`实际安装目录：${libraryRoot || "<未选择>"}/R5R Library/<频道>/`}
+          subtitle={`实际安装目录：${formatInstallDirPreview(libraryRoot)}`}
         />
         <div className="space-y-2">
           <select
@@ -394,18 +450,24 @@ export function SettingsTab() {
         </div>
       </GlassCard>
 
-      {/* 保存全部 */}
+      {/* 自动保存 + 重置 */}
       <div className="sticky bottom-0 -mx-6 px-6 py-3 bg-gradient-to-t from-[#0f1216] to-transparent flex items-center justify-end gap-3">
-        {savedAt && (
-          <div className="text-xs text-emerald-300">已保存 ✓</div>
+        {busy === "autosave" && (
+          <div className="text-xs text-white/50">保存中…</div>
+        )}
+        {busy !== "autosave" && savedAt && (
+          <div className="text-xs text-emerald-300">已自动保存 ✓</div>
+        )}
+        {saveError && (
+          <div className="text-xs text-red-300">保存失败：{saveError}</div>
         )}
         <PrimaryButton
-          variant="primary"
+          variant="secondary"
           size="lg"
-          onClick={handleSaveAll}
-          disabled={busy === "all" || pathErrors.length > 0}
+          onClick={handleReset}
+          disabled={busy === "reset"}
         >
-          {busy === "all" ? "保存中…" : "保存全部"}
+          {busy === "reset" ? "重置中…" : "重置"}
         </PrimaryButton>
       </div>
     </div>

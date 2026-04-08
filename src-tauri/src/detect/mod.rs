@@ -25,15 +25,21 @@ pub struct DetectedInstall {
 
 #[cfg(windows)]
 pub async fn detect_existing(extra_roots: &[String]) -> Vec<DetectedInstall> {
-    let (a, b, c) = tokio::join!(
-        async { shortcut::detect().unwrap_or_default() },
+    let (registry_hits, shortcut_hits, scan_hits) = tokio::join!(
         async { registry::detect().unwrap_or_default() },
+        async { shortcut::detect().unwrap_or_default() },
         async { library_scan::detect(extra_roots) },
     );
     let mut all = Vec::new();
-    all.extend(a);
-    all.extend(b);
-    all.extend(c);
+    // Prefer the uninstall registry as the canonical source. Only fall back
+    // to the Start Menu shortcut if the registry has nothing — we don't want
+    // two near-duplicate rows showing the same install.
+    if !registry_hits.is_empty() {
+        all.extend(registry_hits);
+    } else {
+        all.extend(shortcut_hits);
+    }
+    all.extend(scan_hits);
     dedupe(all)
 }
 

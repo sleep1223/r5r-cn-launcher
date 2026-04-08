@@ -4,7 +4,7 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { InstallProgress } from "../components/InstallProgress";
 import { useSettings } from "../hooks/useSettings";
 import { useLaunchExited } from "../hooks/useLaunchExited";
-import { useInstallProgress } from "../hooks/useInstallProgress";
+import { useInstallLog, useInstallProgress } from "../hooks/useInstallProgress";
 import { detectExistingR5R } from "../ipc/detect";
 import { fetchRemoteConfig } from "../ipc/config";
 import { launchGame } from "../ipc/launch";
@@ -39,6 +39,7 @@ export function HomeTab() {
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const exited = useLaunchExited();
   const progress = useInstallProgress();
+  const installLogs = useInstallLog(activeJobId);
 
   // Run detection once on mount.
   useEffect(() => {
@@ -317,7 +318,11 @@ export function HomeTab() {
 
           {showingProgress ? (
             <div className="mt-6">
-              <InstallProgress progress={progress!} onCancel={handleCancelImport} />
+              <InstallProgress
+                progress={progress!}
+                logs={installLogs}
+                onCancel={handleCancelImport}
+              />
             </div>
           ) : (
             <div className="space-y-3 mt-6">

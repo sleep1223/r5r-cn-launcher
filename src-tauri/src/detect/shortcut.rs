@@ -24,10 +24,15 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
                 .and_then(|rp| PathBuf::from(rp).parent().map(|p| p.display().to_string()))
         });
 
-    let path = match install_dir {
+    let raw_path = match install_dir {
         Some(p) => p,
         None => return Ok(Vec::new()),
     };
+
+    // The shortcut's working directory points at the launcher subfolder
+    // (`...\R5Reloaded\R5R Launcher`), but users expect the actual game root.
+    // Strip the trailing `R5R Launcher` segment if present.
+    let path = strip_launcher_suffix(&raw_path);
 
     Ok(vec![DetectedInstall {
         source: DetectSource::Shortcut,
@@ -35,6 +40,21 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
         channel: None,
         version: None,
     }])
+}
+
+/// Drop a trailing `R5R Launcher` directory segment, case-insensitively.
+fn strip_launcher_suffix(p: &str) -> String {
+    let trimmed = p.trim_end_matches(['\\', '/']);
+    let mut segs: Vec<&str> = trimmed.split(['\\', '/']).collect();
+    if segs
+        .last()
+        .map(|s| s.eq_ignore_ascii_case("R5R Launcher"))
+        .unwrap_or(false)
+    {
+        segs.pop();
+        return segs.join("\\");
+    }
+    p.to_string()
 }
 
 fn shortcut_path() -> Result<PathBuf> {
