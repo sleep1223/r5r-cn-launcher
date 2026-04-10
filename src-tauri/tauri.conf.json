@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0OUVFNTFEQkU3N0RGODAKUldTQTMzZStIZVdlWkNOR0V2a2JRaUNDOUNIcXBuTjUvL1NrcFQyV2JmTXlRY1hrVzVCK2YxbTAK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNGMTQ0MDQ0RDUxNDE1QTUKUldTbEZSVFZSRUFVUHhtbDhUMjJ5QTdWRlFMcXRVOFd1SnNWbi9NUkt5UzUrcjdkNDBtbmpYWGgK",
       "endpoints": [
         "https://r5.sleep0.de/api/v1/r5/launcher/update/{{target}}/{{arch}}/{{current_version}}"
       ]
