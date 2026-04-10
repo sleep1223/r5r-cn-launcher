@@ -24,7 +24,6 @@ export interface LauncherSettings {
   channels: Record<string, PerChannelState>;
   launch_option_selection: unknown;
   last_known_official_install_path: string | null;
-  dashboard_api_url: string;
   update_strategy: UpdateStrategy;
 }
 

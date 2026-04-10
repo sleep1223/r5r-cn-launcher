@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "R5R-CN-Launcher",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "identifier": "com.r5r-cn.launcher",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -32,6 +32,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": "v1Compatible"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0OUVFNTFEQkU3N0RGODAKUldTQTMzZStIZVdlWkNOR0V2a2JRaUNDOUNIcXBuTjUvL1NrcFQyV2JmTXlRY1hrVzVCK2YxbTAK",
+      "endpoints": [
+        "https://r5.sleep0.de/api/v1/r5/launcher/update/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
   }
 }

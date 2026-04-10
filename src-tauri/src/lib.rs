@@ -12,6 +12,7 @@ pub mod offline;
 pub mod process;
 pub mod proxy;
 pub mod state;
+pub mod updater;
 pub mod verify;
 
 use crate::config::LauncherSettings;
@@ -129,6 +130,7 @@ pub fn run() {
             commands::proxy::set_proxy_mode,
             commands::proxy::test_proxy,
             commands::detect::detect_existing_r5r,
+            commands::detect::auto_adopt_existing_install,
             commands::config::fetch_remote_config_cmd,
             commands::config::get_channel_version,
             commands::dashboard::fetch_dashboard_config_cmd,
@@ -142,6 +144,8 @@ pub fn run() {
             commands::install::start_repair,
             commands::install::cancel_install,
             commands::install::check_update,
+            commands::updater::get_launcher_version,
+            commands::updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

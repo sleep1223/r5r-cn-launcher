@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 mod library_scan;
 #[cfg(windows)]
+pub mod official_settings;
+#[cfg(windows)]
 mod registry;
 #[cfg(windows)]
 mod shortcut;

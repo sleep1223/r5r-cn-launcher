@@ -58,7 +58,6 @@ export function SettingsTab() {
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
   const [rootConfigUrl, setRootConfigUrl] = useState("");
-  const [dashboardApiUrl, setDashboardApiUrl] = useState("");
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
@@ -86,7 +85,6 @@ export function SettingsTab() {
       settings.proxy_mode.kind === "custom" ? settings.proxy_mode.url : "",
     );
     setRootConfigUrl(settings.root_config_url);
-    setDashboardApiUrl(settings.dashboard_api_url);
     setUpdateStrategy(settings.update_strategy);
     setLibraryRoot(settings.library_root);
     setConcurrency(settings.concurrent_downloads);
@@ -232,13 +230,10 @@ export function SettingsTab() {
 
     const nextProxy = buildProxyMode();
     const trimmedConfigUrl = rootConfigUrl.trim();
-    const trimmedDashboardUrl = dashboardApiUrl.trim();
 
     const proxyChanged =
       JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
     const configUrlChanged = trimmedConfigUrl !== settings.root_config_url;
-    const dashboardUrlChanged =
-      trimmedDashboardUrl !== settings.dashboard_api_url;
     const libraryRootChanged = libraryRoot !== settings.library_root;
     const concurrencyChanged = concurrency !== settings.concurrent_downloads;
     const updateStrategyChanged = updateStrategy !== settings.update_strategy;
@@ -246,7 +241,6 @@ export function SettingsTab() {
     if (
       !proxyChanged &&
       !configUrlChanged &&
-      !dashboardUrlChanged &&
       !libraryRootChanged &&
       !concurrencyChanged &&
       !updateStrategyChanged
@@ -266,7 +260,6 @@ export function SettingsTab() {
         await update({
           proxy_mode: nextProxy,
           root_config_url: trimmedConfigUrl,
-          dashboard_api_url: trimmedDashboardUrl,
           library_root: libraryRoot,
           concurrent_downloads: concurrency,
           update_strategy: updateStrategy,
@@ -285,7 +278,6 @@ export function SettingsTab() {
     proxyKind,
     proxyUrl,
     rootConfigUrl,
-    dashboardApiUrl,
     updateStrategy,
     libraryRoot,
     concurrency,
@@ -378,21 +370,6 @@ export function SettingsTab() {
           placeholder="https://cdn.r5r.org/launcher/config.json"
           value={rootConfigUrl}
           onChange={(e) => setRootConfigUrl(e.target.value)}
-        />
-      </GlassCard>
-
-      {/* 数据面板 */}
-      <GlassCard>
-        <SectionHeader
-          icon="📊"
-          title="社区数据面板"
-          subtitle="公告、规则、补丁等社区元数据接口（首页会读取这里的内容）。"
-        />
-        <input
-          type="url"
-          placeholder="https://r5.sleep0.de/api/v1/r5/launcher/config"
-          value={dashboardApiUrl}
-          onChange={(e) => setDashboardApiUrl(e.target.value)}
         />
       </GlassCard>
 

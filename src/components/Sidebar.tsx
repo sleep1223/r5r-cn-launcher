@@ -37,7 +37,7 @@ export function Sidebar({ active, onChange }: Props) {
         </button>
       ))}
       <div className="flex-1" />
-      <div className="text-[10px] text-white/30">v0.1.0</div>
+      <div className="text-[10px] text-white/30">v0.5.0</div>
     </aside>
   );
 }

@@ -72,10 +72,15 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib --target x86_64-pc-windows-msvc --locked
 
-      - name: Build Tauri bundle (Windows amd64)
+      - name: Build Tauri bundle (Windows amd64, signed for updater)
         run: pnpm tauri build --target x86_64-pc-windows-msvc
         env:
           CARGO_BUILD_JOBS: '2'
+          # Tauri reads these to sign the NSIS/MSI bundles so the updater
+          # endpoint can serve verified artifacts. The private key is stored
+          # as a GitHub Actions secret — NEVER commit it to the repo.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Stage release artifacts
         shell: bash
@@ -83,13 +88,25 @@ jobs:
           set -euo pipefail
           mkdir -p release-artifacts
           bundle_dir="src-tauri/target/x86_64-pc-windows-msvc/release/bundle"
-          # MSI
+          # MSI + signature
           if compgen -G "$bundle_dir/msi/*.msi" > /dev/null; then
             cp "$bundle_dir"/msi/*.msi release-artifacts/
           fi
-          # NSIS setup.exe
+          if compgen -G "$bundle_dir/msi/*.msi.zip" > /dev/null; then
+            cp "$bundle_dir"/msi/*.msi.zip release-artifacts/
+          fi
+          if compgen -G "$bundle_dir/msi/*.msi.zip.sig" > /dev/null; then
+            cp "$bundle_dir"/msi/*.msi.zip.sig release-artifacts/
+          fi
+          # NSIS setup.exe + signature
           if compgen -G "$bundle_dir/nsis/*-setup.exe" > /dev/null; then
             cp "$bundle_dir"/nsis/*-setup.exe release-artifacts/
+          fi
+          if compgen -G "$bundle_dir/nsis/*-setup.nsis.zip" > /dev/null; then
+            cp "$bundle_dir"/nsis/*-setup.nsis.zip release-artifacts/
+          fi
+          if compgen -G "$bundle_dir/nsis/*-setup.nsis.zip.sig" > /dev/null; then
+            cp "$bundle_dir"/nsis/*-setup.nsis.zip.sig release-artifacts/
           fi
           ls -lah release-artifacts
 
@@ -108,9 +125,8 @@ jobs:
           draft: ${{ inputs.draft || false }}
           prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           files: |
-            release-artifacts/*.msi
-            release-artifacts/*-setup.exe
+            release-artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

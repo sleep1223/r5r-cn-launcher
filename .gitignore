@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Updater signing private key — NEVER commit this
+src-tauri/keys/updater.key
