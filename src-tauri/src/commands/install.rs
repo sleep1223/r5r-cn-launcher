@@ -6,9 +6,10 @@ use crate::offline::dir_import::import_directory;
 use crate::offline::shape_detect::{detect_directory, detect_zip};
 use crate::offline::zip_import::import_zip;
 use crate::offline::OfflineSource;
-use crate::state::{JobHandle, LauncherState};
+use crate::state::{JobHandle, LauncherState, PauseState};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio_util::sync::CancellationToken;
 
@@ -34,10 +35,17 @@ pub async fn start_offline_import(
     let install_root = PathBuf::from(install_root);
     let job_id = new_job_id();
     let cancel = CancellationToken::new();
+    // Offline import doesn't honour pause (it's mostly local disk copying),
+    // but JobHandle still needs a PauseState so cancel/remove behave uniformly.
+    let pause = Arc::new(PauseState::new());
 
-    state
-        .jobs
-        .insert(job_id.clone(), JobHandle { cancel: cancel.clone() });
+    state.jobs.insert(
+        job_id.clone(),
+        JobHandle {
+            cancel: cancel.clone(),
+            pause,
+        },
+    );
 
     let app_clone = app.clone();
     let job_id_clone = job_id.clone();
@@ -132,6 +140,17 @@ pub fn cancel_install(state: State<'_, LauncherState>, job_id: String) -> AppRes
     Ok(state.jobs.cancel(&job_id))
 }
 
+/// Pause (or resume) a running install/update/repair. Offline imports ignore
+/// the flag — they don't poll pause gates.
+#[tauri::command]
+pub fn pause_install(
+    state: State<'_, LauncherState>,
+    job_id: String,
+    paused: bool,
+) -> AppResult<bool> {
+    Ok(state.jobs.set_paused(&job_id, paused))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdateStatus {
     pub has_update: bool,
@@ -198,9 +217,14 @@ async fn spawn_pipeline(
 
     let job_id = new_job_id();
     let cancel = CancellationToken::new();
-    state
-        .jobs
-        .insert(job_id.clone(), JobHandle { cancel: cancel.clone() });
+    let pause = Arc::new(PauseState::new());
+    state.jobs.insert(
+        job_id.clone(),
+        JobHandle {
+            cancel: cancel.clone(),
+            pause: pause.clone(),
+        },
+    );
 
     let app_clone = app.clone();
     let job_id_clone = job_id.clone();
@@ -222,7 +246,16 @@ async fn spawn_pipeline(
             jobs: jobs.clone(),
             config_dir: config_dir_arc.clone(),
         };
-        let _ = run_install(app_clone, &owned, job_id_clone.clone(), channel, mode, cancel).await;
+        let _ = run_install(
+            app_clone,
+            &owned,
+            job_id_clone.clone(),
+            channel,
+            mode,
+            cancel,
+            pause,
+        )
+        .await;
         jobs.remove(&job_id_clone);
     });
 

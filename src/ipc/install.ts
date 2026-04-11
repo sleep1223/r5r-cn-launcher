@@ -32,3 +32,6 @@ export const checkUpdate = (channel: string) =>
 
 export const cancelInstall = (jobId: string) =>
   invoke<boolean>("cancel_install", { jobId });
+
+export const pauseInstall = (jobId: string, paused: boolean) =>
+  invoke<boolean>("pause_install", { jobId, paused });

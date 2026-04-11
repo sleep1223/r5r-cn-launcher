@@ -46,6 +46,7 @@ pub fn detect(extra_roots: &[String]) -> Vec<DetectedInstall> {
                     path: path.display().to_string(),
                     channel,
                     version: None,
+                    has_game: true,
                 });
             }
         }

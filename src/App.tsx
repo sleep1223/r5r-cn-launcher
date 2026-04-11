@@ -14,7 +14,7 @@ function App() {
       <div className="h-screen w-screen flex overflow-hidden">
         <Sidebar active={tab} onChange={setTab} />
         <main className="flex-1 overflow-y-auto">
-          {tab === "home" && <HomeTab />}
+          {tab === "home" && <HomeTab onNavigate={setTab} />}
           {tab === "launch_options" && <LaunchOptionsTab />}
           {tab === "settings" && <SettingsTab />}
           {tab === "about" && <AboutTab />}

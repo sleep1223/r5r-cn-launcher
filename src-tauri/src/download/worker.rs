@@ -3,6 +3,7 @@ use crate::download::progress::ProgressAggregator;
 use crate::download::retry::RetryPolicy;
 use crate::error::{AppError, AppResult};
 use crate::manifest::ManifestEntry;
+use crate::state::PauseState;
 use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
@@ -12,6 +13,11 @@ use tokio_util::sync::CancellationToken;
 
 /// Stream-download a single URL into `dest`. Reports each chunk to `agg`.
 /// On cancellation, returns `AppError::Cancelled` (so retry doesn't try again).
+///
+/// Pauses honour `pause` at two points: before firing the request (so a pause
+/// that started between retries holds the retry off) and between body chunks
+/// (so an in-flight download freezes mid-stream). TCP backpressure keeps the
+/// server quiet while we wait.
 pub async fn stream_download(
     client: &Client,
     url: &str,
@@ -19,7 +25,12 @@ pub async fn stream_download(
     dest: &Path,
     agg: &Arc<ProgressAggregator>,
     cancel: &CancellationToken,
+    pause: &Arc<PauseState>,
 ) -> AppResult<()> {
+    if cancel.is_cancelled() {
+        return Err(AppError::Cancelled);
+    }
+    pause.wait().await;
     if cancel.is_cancelled() {
         return Err(AppError::Cancelled);
     }
@@ -56,6 +67,18 @@ pub async fn stream_download(
         let chunk = item.map_err(|e| AppError::http(format!("read body: {}", e)))?;
         file.write_all(&chunk).await?;
         agg.add_bytes(chunk.len() as u64);
+        // Hold mid-stream if the user hit pause. We stop polling the bytes
+        // stream, TCP backpressure throttles the sender. Long pauses can
+        // eventually trip the server's idle timeout — if that happens the
+        // retry policy will restart this file from scratch.
+        if pause.is_paused() {
+            pause.wait().await;
+            if cancel.is_cancelled() {
+                drop(file);
+                let _ = tokio::fs::remove_file(dest).await;
+                return Err(AppError::Cancelled);
+            }
+        }
     }
     file.flush().await?;
     file.sync_all().await?;
@@ -85,6 +108,7 @@ pub async fn download_single(
     install_dir: &Path,
     agg: &Arc<ProgressAggregator>,
     cancel: &CancellationToken,
+    pause: &Arc<PauseState>,
     retry: &RetryPolicy,
 ) -> AppResult<()> {
     let url = entry_url(channel, &entry.path);
@@ -94,7 +118,10 @@ pub async fn download_single(
         .run(|_| {
             let url = url.clone();
             let dest = dest.clone();
-            async move { stream_download(client, &url, channel, &dest, agg, cancel).await }
+            let pause = pause.clone();
+            async move {
+                stream_download(client, &url, channel, &dest, agg, cancel, &pause).await
+            }
         })
         .await?;
     agg.finish_file(&entry.path);

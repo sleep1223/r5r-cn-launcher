@@ -23,6 +23,12 @@ pub struct DetectedInstall {
     pub path: String,
     pub channel: Option<String>,
     pub version: Option<String>,
+    /// True when `<path>/r5apex.exe` exists — i.e. launching directly from
+    /// `path` would work. Library-scan hits are already filtered on this, but
+    /// registry/shortcut hits can point at a library root or a parent dir
+    /// that isn't itself runnable.
+    #[serde(default)]
+    pub has_game: bool,
 }
 
 #[cfg(windows)]
@@ -42,7 +48,11 @@ pub async fn detect_existing(extra_roots: &[String]) -> Vec<DetectedInstall> {
         all.extend(shortcut_hits);
     }
     all.extend(scan_hits);
-    dedupe(all)
+    let mut deduped = dedupe(all);
+    for hit in deduped.iter_mut() {
+        hit.has_game = std::path::Path::new(&hit.path).join("r5apex.exe").exists();
+    }
+    deduped
 }
 
 #[cfg(not(windows))]

@@ -13,6 +13,9 @@ pub enum ProxyMode {
 
 impl Default for ProxyMode {
     fn default() -> Self {
-        ProxyMode::System
+        // We default to direct connection because the whole point of this
+        // launcher is a Chinese mirror — system proxies (VPN/加速器) would
+        // route the mirror traffic through the wrong exit and defeat it.
+        ProxyMode::None
     }
 }

@@ -143,6 +143,7 @@ pub fn run() {
             commands::install::start_update,
             commands::install::start_repair,
             commands::install::cancel_install,
+            commands::install::pause_install,
             commands::install::check_update,
             commands::updater::get_launcher_version,
             commands::updater::download_and_apply_update,

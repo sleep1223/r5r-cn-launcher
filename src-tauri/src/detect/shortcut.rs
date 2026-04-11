@@ -39,6 +39,7 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
         path,
         channel: None,
         version: None,
+        has_game: false,
     }])
 }
 

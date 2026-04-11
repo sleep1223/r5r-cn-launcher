@@ -7,6 +7,10 @@ interface Props {
   progress: ProgressEvent;
   logs?: InstallLogEvent[];
   onCancel?: () => void;
+  /** If set, a 暂停/继续 button is shown next to 取消. */
+  onTogglePause?: () => void;
+  /** Current pause state — drives the toggle label. */
+  paused?: boolean;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -22,7 +26,13 @@ const PHASE_LABELS: Record<string, string> = {
   cancelled: "已取消",
 };
 
-export function InstallProgress({ progress, logs, onCancel }: Props) {
+export function InstallProgress({
+  progress,
+  logs,
+  onCancel,
+  onTogglePause,
+  paused = false,
+}: Props) {
   const phase = progress.phase.phase;
   const [showLogs, setShowLogs] = useState(false);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
@@ -47,7 +57,9 @@ export function InstallProgress({ progress, logs, onCancel }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium">{PHASE_LABELS[phase] ?? phase}</span>
+        <span className="text-sm font-medium">
+          {paused ? "已暂停" : (PHASE_LABELS[phase] ?? phase)}
+        </span>
         {progress.file_count > 0 && (
           <span className="text-xs text-white/40">
             {progress.file_index} / {progress.file_count} 文件
@@ -122,11 +134,18 @@ export function InstallProgress({ progress, logs, onCancel }: Props) {
         </div>
       )}
 
-      {!isFinal && onCancel && (
-        <div>
-          <PrimaryButton variant="secondary" onClick={onCancel}>
-            取消
-          </PrimaryButton>
+      {!isFinal && (onCancel || onTogglePause) && (
+        <div className="flex items-center gap-2">
+          {onTogglePause && (
+            <PrimaryButton variant="secondary" onClick={onTogglePause}>
+              {paused ? "继续" : "暂停"}
+            </PrimaryButton>
+          )}
+          {onCancel && (
+            <PrimaryButton variant="secondary" onClick={onCancel}>
+              取消
+            </PrimaryButton>
+          )}
         </div>
       )}
     </div>

@@ -17,6 +17,7 @@ import { launchGame } from "../ipc/launch";
 import {
   cancelInstall,
   checkUpdate,
+  pauseInstall,
   startOfflineImport,
   startOnlineInstall,
   startRepair,
@@ -29,10 +30,15 @@ import {
   RemoteConfig,
 } from "../ipc/types";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
+import type { TabId } from "../components/Sidebar";
 
 type Action = "install" | "update" | "play" | "blocked";
 
-export function HomeTab() {
+interface Props {
+  onNavigate: (tab: TabId) => void;
+}
+
+export function HomeTab({ onNavigate }: Props) {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
   const [config, setConfig] = useState<RemoteConfig | null>(null);
@@ -41,6 +47,10 @@ export function HomeTab() {
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchedPid, setLaunchedPid] = useState<number | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // True for jobs that go through `run_install` (online install/update/repair).
+  // Offline imports ignore pause — hide the button for them.
+  const [activeJobPausable, setActiveJobPausable] = useState(false);
+  const [jobPaused, setJobPaused] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
@@ -53,6 +63,10 @@ export function HomeTab() {
   } | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  // Flips true once the auto-adopt effect has finished (adopted or not).
+  // We use this to suppress the onboarding card until we know whether the
+  // backend will populate `library_root` from a detected official install.
+  const [autoAdoptChecked, setAutoAdoptChecked] = useState(false);
   const exited = useLaunchExited();
   const progress = useInstallProgress();
   const installLogs = useInstallLog(activeJobId);
@@ -88,7 +102,7 @@ export function HomeTab() {
           // match the mirror's manifest.
           try {
             const id = await startRepair("LIVE");
-            setActiveJobId(id);
+            beginJob(id, true);
           } catch {
             // If repair fails to start (e.g. mirror URL not set), no big
             // deal — the user can still configure and run it manually.
@@ -96,6 +110,8 @@ export function HomeTab() {
         }
       } catch {
         // Detection is best-effort — failure is silent.
+      } finally {
+        if (!cancelled) setAutoAdoptChecked(true);
       }
     })();
     return () => {
@@ -238,17 +254,50 @@ export function HomeTab() {
         progress.phase.phase === "cancelled")
     ) {
       void reload();
+      setJobPaused(false);
+      setActiveJobPausable(false);
       window.setTimeout(() => setActiveJobId(null), 1500);
     }
   }, [progress, activeJobId, reload]);
+
+  // Helper: record a just-started job. `pausable` tells the UI whether the
+  // 暂停 button should be offered — only `run_install` jobs honour it.
+  const beginJob = (id: string, pausable: boolean) => {
+    setActiveJobId(id);
+    setActiveJobPausable(pausable);
+    setJobPaused(false);
+  };
 
   const installed =
     !!settings &&
     !!settings.selected_channel &&
     !!settings.channels[settings.selected_channel]?.installed;
 
+  // Pick the detected install we'd launch from if the user hit "play" right
+  // now. Only consider hits whose `path` directly contains `r5apex.exe` —
+  // `has_game === true` — because `launch_game` joins `path/r5apex.exe` and
+  // will error otherwise. Prefer a hit whose channel matches the selected
+  // channel so, e.g., if the user chose LIVE we don't silently launch PTU.
+  const launchableDetected = useMemo(() => {
+    if (!detected || detected.length === 0) return null;
+    const runnable = detected.filter((d) => d.has_game);
+    if (runnable.length === 0) return null;
+    const sel = settings?.selected_channel;
+    if (sel) {
+      const match = runnable.find(
+        (d) => d.channel?.toUpperCase() === sel.toUpperCase(),
+      );
+      if (match) return match;
+    }
+    return runnable[0];
+  }, [detected, settings?.selected_channel]);
+
   const action: Action = useMemo(() => {
     if (!settings) return "blocked";
+    // If we have a detected install that can launch directly, always prefer
+    // launching from it over going through install/update flows — the user
+    // already has the game on disk, no need to re-download via the mirror.
+    if (launchableDetected) return "play";
     if (!settings.root_config_url || !settings.library_root) {
       // Not configured for online install — but if a detected install exists,
       // user can still launch the game using compose options.
@@ -259,10 +308,9 @@ export function HomeTab() {
     if (!installed) return "install";
     if (updateAvailable) return "update";
     return "play";
-  }, [settings, detected, installed, updateAvailable]);
+  }, [settings, detected, launchableDetected, installed, updateAvailable]);
 
-  const launchableDir =
-    !installed && detected && detected.length > 0 ? detected[0].path : null;
+  const launchableDir = launchableDetected?.path ?? null;
 
   const handlePrimaryAction = async () => {
     if (!settings) return;
@@ -274,12 +322,12 @@ export function HomeTab() {
       switch (action) {
         case "install": {
           const id = await startOnlineInstall(settings.selected_channel);
-          setActiveJobId(id);
+          beginJob(id, true);
           break;
         }
         case "update": {
           const id = await startUpdate(settings.selected_channel);
-          setActiveJobId(id);
+          beginJob(id, true);
           break;
         }
         case "play": {
@@ -288,7 +336,12 @@ export function HomeTab() {
           // since then. Cheap (~10ms) so it's fine on the hot path.
           const fresh = await detectAccelerators().catch(() => []);
           if (fresh.length > 0) {
-            const names = fresh.map((a) => a.name).join("、");
+            // Include the actual process name so the user can track it down
+            // in Task Manager if the friendly name is ambiguous (e.g. two
+            // UU helpers running, or a "未知加速器" catch-all match).
+            const names = fresh
+              .map((a) => `${a.name}（${a.process_name}）`)
+              .join("、");
             const ok = await ask(
               `检测到正在运行的加速器：${names}\n\n` +
                 `社区服走的是镜像直连，加速器会把游戏流量绕到错误的节点，导致丢包、卡顿、断线。\n\n` +
@@ -326,7 +379,7 @@ export function HomeTab() {
     setImportError(null);
     try {
       const id = await startRepair(settings.selected_channel);
-      setActiveJobId(id);
+      beginJob(id, true);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
     }
@@ -349,7 +402,7 @@ export function HomeTab() {
         type: "directory",
         path: picked,
       });
-      setActiveJobId(id);
+      beginJob(id, false);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
     }
@@ -373,7 +426,7 @@ export function HomeTab() {
         type: "zip",
         path: picked,
       });
-      setActiveJobId(id);
+      beginJob(id, false);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
     }
@@ -382,6 +435,21 @@ export function HomeTab() {
   const handleCancelImport = async () => {
     if (!activeJobId) return;
     await cancelInstall(activeJobId);
+  };
+
+  const handleTogglePause = async () => {
+    if (!activeJobId) return;
+    const next = !jobPaused;
+    // Flip local state immediately so the button updates even if the IPC
+    // call is slow; if the backend rejects (job already finished), we'll
+    // revert below.
+    setJobPaused(next);
+    try {
+      const ok = await pauseInstall(activeJobId, next);
+      if (!ok) setJobPaused(!next);
+    } catch {
+      setJobPaused(!next);
+    }
   };
 
   const showingProgress = activeJobId && progress?.job_id === activeJobId;
@@ -432,8 +500,41 @@ export function HomeTab() {
     );
   }
 
+  // Show the onboarding card only once we know auto-adopt didn't fill in a
+  // path for us — otherwise the card briefly flashes on cold start even
+  // when the backend is about to adopt an existing official install.
+  const needsGameFolder =
+    !!settings && autoAdoptChecked && !settings.library_root;
+
   return (
     <div className="p-6 space-y-5">
+      {needsGameFolder && (
+        <GlassCard className="border-blue-400/40 bg-blue-500/[0.08]">
+          <div className="flex items-start gap-4">
+            <span className="text-2xl leading-none">📁</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-blue-100">
+                请先配置游戏文件夹
+              </div>
+              <div className="text-xs text-blue-100/75 mt-1 leading-relaxed">
+                还没有选择游戏安装位置。前往【设置】选一个不含中文的目录作为
+                R5R 库根目录，启动器会把游戏放在
+                <span className="font-mono mx-1">
+                  &lt;根目录&gt;/R5R Library/&lt;频道&gt;/
+                </span>
+                下。
+              </div>
+            </div>
+            <PrimaryButton
+              variant="primary"
+              onClick={() => onNavigate("settings")}
+            >
+              前往设置
+            </PrimaryButton>
+          </div>
+        </GlassCard>
+      )}
+
       {/* Non-forced update banner — shown at the top, dismissible. */}
       {launcherUpdate && !launcherUpdate.force && (
         <GlassCard className="border-blue-400/30">
@@ -584,6 +685,8 @@ export function HomeTab() {
                 progress={progress!}
                 logs={installLogs}
                 onCancel={handleCancelImport}
+                onTogglePause={activeJobPausable ? handleTogglePause : undefined}
+                paused={jobPaused}
               />
             </div>
           ) : (
@@ -611,7 +714,7 @@ export function HomeTab() {
                   校验
                 </PrimaryButton>
               </div>
-              {launchableDir && action === "play" && !installed && (
+              {launchableDir && action === "play" && (
                 <div className="text-xs text-white/40">
                   将从已检测到的官方安装启动：{launchableDir}
                 </div>

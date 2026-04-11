@@ -10,7 +10,7 @@ use crate::events::{
     EVT_INSTALL_PROGRESS,
 };
 use crate::manifest::{fetch_manifest, is_language_match, is_user_generated, ManifestEntry};
-use crate::state::LauncherState;
+use crate::state::{LauncherState, PauseState};
 use crate::verify::sha256_file;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -66,6 +66,7 @@ pub async fn run_install(
     channel_name: String,
     mode: InstallMode,
     cancel: CancellationToken,
+    pause: Arc<PauseState>,
 ) -> AppResult<()> {
     let emit = |phase: InstallPhase| {
         let _ = app.emit(
@@ -106,7 +107,19 @@ pub async fn run_install(
     let client: Client = state.http.read().await.client();
     emit(InstallPhase::FetchingConfig);
     emit_log(&app, &job_id, LogLevel::Info, format!("拉取镜像 config.json: {}", root_url));
-    let cfg: RemoteConfig = fetch_remote_config(&client, &root_url).await?;
+    // Wrap the HTTP fetches in `tokio::select!` against the cancel token so
+    // clicking 取消 immediately unblocks even when reqwest is hung waiting on a
+    // slow/dead mirror. Without this, the user would stare at "拉取 config"
+    // until reqwest's 300s read timeout fired.
+    let cfg: RemoteConfig = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
+        r = fetch_remote_config(&client, &root_url) => r?,
+    };
     let channel: Channel = cfg
         .channels
         .into_iter()
@@ -132,7 +145,15 @@ pub async fn run_install(
     );
 
     // 3. Version check (Update mode only).
-    let remote_version = fetch_channel_version(&client, &channel).await.ok();
+    let remote_version = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
+        r = fetch_channel_version(&client, &channel) => r.ok(),
+    };
     if let Some(rv) = &remote_version {
         emit_log(&app, &job_id, LogLevel::Info, format!("远端版本: {}", rv));
     }
@@ -156,7 +177,15 @@ pub async fn run_install(
     // 4. Fetch manifest.
     emit(InstallPhase::FetchingManifest);
     emit_log(&app, &job_id, LogLevel::Info, "拉取游戏 checksums.json …");
-    let manifest = fetch_manifest(&client, &channel).await?;
+    let manifest = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
+        r = fetch_manifest(&client, &channel) => r?,
+    };
     emit_log(
         &app,
         &job_id,
@@ -227,9 +256,19 @@ pub async fn run_install(
     // Hash existing files concurrently — bound by concurrent_downloads so we
     // don't thrash the disk on slow drives.
     let scan_sem = Arc::new(Semaphore::new(concurrent_downloads as usize));
-    let scan_results: Vec<Option<ManifestEntry>> = {
+    let scan_results: AppResult<Vec<Option<ManifestEntry>>> = async {
         let mut futs = FuturesUnordered::new();
         for entry in candidates.iter().cloned() {
+            // Bail out of the spawn loop fast on cancel — don't queue up more
+            // hashing work we'll just throw away.
+            if cancel.is_cancelled() {
+                return Err(AppError::Cancelled);
+            }
+            // Hold the spawn loop while paused so we don't burn permits.
+            pause.wait().await;
+            if cancel.is_cancelled() {
+                return Err(AppError::Cancelled);
+            }
             let permit = scan_sem
                 .clone()
                 .acquire_owned()
@@ -238,8 +277,17 @@ pub async fn run_install(
             let install_dir = install_dir.clone();
             let scan_done = scan_done.clone();
             let scan_skipped = scan_skipped.clone();
+            let pause = pause.clone();
+            let cancel = cancel.clone();
             futs.push(tokio::spawn(async move {
                 let _permit = permit;
+                if cancel.is_cancelled() {
+                    return Err(AppError::Cancelled);
+                }
+                pause.wait().await;
+                if cancel.is_cancelled() {
+                    return Err(AppError::Cancelled);
+                }
                 let local = entry_local_path(&install_dir, &entry.path);
                 let needs = if !local.exists() {
                     true
@@ -254,19 +302,31 @@ pub async fn run_install(
                 scan_done.fetch_add(1, Ordering::Relaxed);
                 if !needs {
                     scan_skipped.fetch_add(1, Ordering::Relaxed);
-                    None
+                    Ok(None)
                 } else {
-                    Some(entry)
+                    Ok(Some(entry))
                 }
             }));
         }
         let mut out = Vec::with_capacity(scan_total);
         while let Some(joined) = futs.next().await {
-            out.push(joined.map_err(|e| AppError::other(e.to_string()))?);
+            let r: AppResult<Option<ManifestEntry>> =
+                joined.map_err(|e| AppError::other(e.to_string()))?;
+            out.push(r?);
         }
-        out
-    };
+        Ok(out)
+    }
+    .await;
     scan_emitter.abort();
+    let scan_results = match scan_results {
+        Ok(v) => v,
+        Err(AppError::Cancelled) => {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
+        Err(e) => return Err(e),
+    };
 
     let plan: Vec<ManifestEntry> = scan_results.into_iter().flatten().collect();
     let skipped = scan_skipped.load(Ordering::Relaxed);
@@ -321,6 +381,15 @@ pub async fn run_install(
 
     let mut futs = FuturesUnordered::new();
     for entry in plan.iter().cloned() {
+        if cancel.is_cancelled() {
+            break;
+        }
+        // Pause the outer dispatch loop — no point burning semaphore permits
+        // while the user wants the pipeline frozen.
+        pause.wait().await;
+        if cancel.is_cancelled() {
+            break;
+        }
         let permit = sem
             .clone()
             .acquire_owned()
@@ -331,14 +400,33 @@ pub async fn run_install(
         let install_dir = install_dir.clone();
         let agg = agg.clone();
         let cancel = cancel.clone();
+        let pause = pause.clone();
         futs.push(tokio::spawn(async move {
             let _permit = permit;
             if entry.parts.is_empty() {
-                download_single(&client, &channel, &entry, &install_dir, &agg, &cancel, &retry_full)
-                    .await
+                download_single(
+                    &client,
+                    &channel,
+                    &entry,
+                    &install_dir,
+                    &agg,
+                    &cancel,
+                    &pause,
+                    &retry_full,
+                )
+                .await
             } else {
-                download_chunked(&client, &channel, &entry, &install_dir, &agg, &cancel, &retry_chunk)
-                    .await
+                download_chunked(
+                    &client,
+                    &channel,
+                    &entry,
+                    &install_dir,
+                    &agg,
+                    &cancel,
+                    &pause,
+                    &retry_chunk,
+                )
+                .await
             }
         }));
     }
@@ -377,6 +465,17 @@ pub async fn run_install(
     emit(InstallPhase::Verifying);
     emit_log(&app, &job_id, LogLevel::Info, "校验下载结果 …");
     for entry in &plan {
+        if cancel.is_cancelled() {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
+        pause.wait().await;
+        if cancel.is_cancelled() {
+            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
+            emit(InstallPhase::Cancelled);
+            return Err(AppError::Cancelled);
+        }
         if entry.checksum.is_empty() {
             continue;
         }

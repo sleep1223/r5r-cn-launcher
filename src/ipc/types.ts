@@ -78,6 +78,8 @@ export interface DetectedInstall {
   path: string;
   channel: string | null;
   version: string | null;
+  /** True when `<path>/r5apex.exe` exists — safe to launch directly from `path`. */
+  has_game: boolean;
 }
 
 export interface RemoteChannel {

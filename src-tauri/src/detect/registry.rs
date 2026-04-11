@@ -47,6 +47,7 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
                 } else {
                     Some(display_version)
                 },
+                has_game: false,
             });
         }
     }

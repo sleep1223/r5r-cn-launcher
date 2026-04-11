@@ -4,6 +4,7 @@ use crate::download::retry::RetryPolicy;
 use crate::download::worker::{entry_local_path, entry_url, stream_download};
 use crate::error::{AppError, AppResult};
 use crate::manifest::ManifestEntry;
+use crate::state::PauseState;
 use crate::verify::sha256_file;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -24,6 +25,7 @@ pub async fn download_chunked(
     install_dir: &Path,
     agg: &Arc<ProgressAggregator>,
     cancel: &CancellationToken,
+    pause: &Arc<PauseState>,
     retry: &RetryPolicy,
 ) -> AppResult<()> {
     let dest = entry_local_path(install_dir, &entry.path);
@@ -50,6 +52,7 @@ pub async fn download_chunked(
         let channel_clone = channel.clone();
         let agg = agg.clone();
         let cancel = cancel.clone();
+        let pause_outer = pause.clone();
         let tmp_root = tmp_root.clone();
         let retry = *retry;
         futs.push(tokio::spawn(async move {
@@ -65,8 +68,12 @@ pub async fn download_chunked(
                     let channel = channel_clone.clone();
                     let agg = agg.clone();
                     let cancel = cancel.clone();
+                    let pause = pause_outer.clone();
                     async move {
-                        stream_download(&client, &url, &channel, &part_dest, &agg, &cancel).await
+                        stream_download(
+                            &client, &url, &channel, &part_dest, &agg, &cancel, &pause,
+                        )
+                        .await
                     }
                 })
                 .await?;
