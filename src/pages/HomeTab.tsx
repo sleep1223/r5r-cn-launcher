@@ -55,7 +55,6 @@ export function HomeTab({ onNavigate }: Props) {
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [launcherUpdate, setLauncherUpdate] = useState<{
     version: string;
     url: string;
@@ -122,16 +121,21 @@ export function HomeTab({ onNavigate }: Props) {
 
   // Pull the community dashboard once on mount. The URL is hardcoded in the
   // backend (`DEFAULT_DASHBOARD_API_URL`), so there's nothing to configure.
+  // The dashboard is purely informational (announcement / rules / version
+  // badge) and nothing in the install or launch flow depends on it, so we
+  // silently degrade on failure rather than greeting users with a scary
+  // error banner about a server-side outage they cannot fix. The Settings
+  // tab's "测试一下" affordance still surfaces real errors to the maintainer.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setDashboardError(null);
       try {
         const d = await fetchDashboardConfig();
         if (!cancelled) setDashboard(d);
       } catch (e) {
         if (!cancelled) {
-          setDashboardError(e instanceof Error ? e.message : String(e));
+          // eslint-disable-next-line no-console
+          console.warn("dashboard fetch failed:", e);
           setDashboard(null);
         }
       }
@@ -765,14 +769,6 @@ export function HomeTab({ onNavigate }: Props) {
                 ))}
               </div>
             </div>
-          </div>
-        </GlassCard>
-      )}
-
-      {dashboardError && (
-        <GlassCard>
-          <div className="text-xs text-amber-300">
-            社区服数据面板暂不可用：{dashboardError}
           </div>
         </GlassCard>
       )}
