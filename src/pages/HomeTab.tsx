@@ -8,7 +8,7 @@ import { useInstallLog, useInstallProgress } from "../hooks/useInstallProgress";
 import { useAccelerators } from "../hooks/useAccelerators";
 import { autoAdoptExistingInstall, detectExistingR5R } from "../ipc/detect";
 import { fetchDashboardConfig } from "../ipc/dashboard";
-import { openExternalUrl } from "../ipc/settings";
+import { openExternalUrl, suggestInstallPath } from "../ipc/settings";
 import { detectAccelerators } from "../ipc/accelerator";
 import { getLauncherVersion, downloadAndApplyUpdate } from "../ipc/updater";
 import { launchGame } from "../ipc/launch";
@@ -24,18 +24,13 @@ import {
 import {
   DashboardConfig,
   DetectedInstall,
+  DiskSuggestion,
   LaunchOptionSelection,
 } from "../ipc/types";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { TabId } from "../components/Sidebar";
-
 type Action = "install" | "update" | "play" | "blocked";
 
-interface Props {
-  onNavigate: (tab: TabId) => void;
-}
-
-export function HomeTab({ onNavigate }: Props) {
+export function HomeTab() {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -60,6 +55,10 @@ export function HomeTab({ onNavigate }: Props) {
   // We use this to suppress the onboarding card until we know whether the
   // backend will populate `library_root` from a detected official install.
   const [autoAdoptChecked, setAutoAdoptChecked] = useState(false);
+  // Onboarding wizard state
+  const [wizardStep, setWizardStep] = useState(0); // 0=dir, 1=download, 2=import, 3=verify
+  const [diskSuggestions, setDiskSuggestions] = useState<DiskSuggestion[] | null>(null);
+  const [copyFlash, setCopyFlash] = useState(false);
   const exited = useLaunchExited();
   const progress = useInstallProgress();
   const installLogs = useInstallLog(activeJobId);
@@ -479,38 +478,290 @@ export function HomeTab({ onNavigate }: Props) {
     );
   }
 
-  // Show the onboarding card only once we know auto-adopt didn't fill in a
-  // path for us — otherwise the card briefly flashes on cold start even
-  // when the backend is about to adopt an existing official install.
-  const needsGameFolder =
-    !!settings && autoAdoptChecked && !settings.library_root;
+  // The onboarding wizard shows when: auto-adopt is done, no detected
+  // launchable install, and the game is not installed via our launcher.
+  const needsOnboarding =
+    !!settings &&
+    autoAdoptChecked &&
+    !launchableDetected &&
+    !installed;
+
+  // Fetch disk suggestions when entering the wizard.
+  useEffect(() => {
+    if (!needsOnboarding) return;
+    suggestInstallPath()
+      .then(setDiskSuggestions)
+      .catch(() => setDiskSuggestions([]));
+  }, [needsOnboarding]);
+
+  // Auto-advance wizard: step 0→1 once library_root is set.
+  useEffect(() => {
+    if (needsOnboarding && settings?.library_root && wizardStep === 0) {
+      setWizardStep(1);
+    }
+  }, [needsOnboarding, settings?.library_root, wizardStep]);
+
+  // Auto-advance wizard: import complete → step 3 (verify) auto-trigger.
+  useEffect(() => {
+    if (
+      needsOnboarding &&
+      wizardStep === 2 &&
+      progress?.job_id === activeJobId &&
+      progress.phase.phase === "complete"
+    ) {
+      // Import done → auto-trigger verification.
+      setWizardStep(3);
+      const channel = settings?.selected_channel || "live_game";
+      startRepair(channel)
+        .then((id) => beginJob(id, true))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsOnboarding, wizardStep, progress?.phase]);
+
+  const handlePickDisk = async (path: string) => {
+    await update({ library_root: path });
+  };
+
+  const handleBrowseFolder = async () => {
+    const picked = await openDialog({
+      directory: true,
+      multiple: false,
+      title: "选择安装根目录（建议 30GB 以上可用空间）",
+    });
+    if (typeof picked === "string") {
+      await update({ library_root: picked });
+    }
+  };
+
+  const handleCopyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url);
+    setCopyFlash(true);
+    window.setTimeout(() => setCopyFlash(false), 1500);
+  };
+
+  const handleWizardImportZip = async () => {
+    if (!settings?.library_root) return;
+    setImportError(null);
+    const picked = await openDialog({
+      directory: false,
+      multiple: false,
+      title: "选择已下载的离线包 zip",
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const id = await startOfflineImport(settings.library_root, {
+        type: "zip",
+        path: picked,
+      });
+      beginJob(id, false);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const formatGB = (bytes: number) =>
+    `${(bytes / 1024 / 1024 / 1024).toFixed(0)} GB`;
+
+  const STEP_LABELS = ["选择目录", "下载离线包", "导入安装", "校验文件"];
 
   return (
     <div className="p-6 space-y-5">
-      {needsGameFolder && (
+      {needsOnboarding && (
         <GlassCard className="border-blue-400/40 bg-blue-500/[0.08]">
-          <div className="flex items-start gap-4">
-            <span className="text-2xl leading-none">📁</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-blue-100">
-                请先配置游戏文件夹
+          {/* Step indicator */}
+          <div className="flex items-center gap-2 mb-4">
+            {STEP_LABELS.map((label, i) => (
+              <div key={label} className="flex items-center gap-2">
+                {i > 0 && <div className="w-6 h-px bg-white/20" />}
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`size-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                      i < wizardStep
+                        ? "bg-emerald-400/80 text-black"
+                        : i === wizardStep
+                          ? "bg-blue-400/80 text-black"
+                          : "bg-white/10 text-white/40"
+                    }`}
+                  >
+                    {i < wizardStep ? "✓" : i + 1}
+                  </span>
+                  <span
+                    className={`text-[11px] ${
+                      i === wizardStep
+                        ? "text-blue-200 font-medium"
+                        : "text-white/40"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
               </div>
-              <div className="text-xs text-blue-100/75 mt-1 leading-relaxed">
-                还没有选择游戏安装位置。前往【设置】选一个不含中文的目录作为
-                R5R 库根目录，启动器会把游戏放在
-                <span className="font-mono mx-1">
-                  &lt;根目录&gt;/R5R Library/&lt;频道&gt;/
-                </span>
-                下。
+            ))}
+          </div>
+
+          {/* Step 0: Pick install directory */}
+          {wizardStep === 0 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-blue-100">
+                选择游戏安装目录
+              </div>
+              <div className="text-xs text-blue-100/70 leading-relaxed">
+                请选择一个不含中文的目录，需要至少 30GB 可用空间。
+                建议使用 C 盘以外的磁盘。
+              </div>
+              {diskSuggestions === null && (
+                <div className="text-xs text-white/40">正在扫描磁盘…</div>
+              )}
+              {diskSuggestions && diskSuggestions.length > 0 && (
+                <div className="space-y-1.5">
+                  {diskSuggestions.map((d) => (
+                    <button
+                      key={d.path}
+                      type="button"
+                      onClick={() => handlePickDisk(d.path)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40 transition-all text-left"
+                    >
+                      <span className="font-mono text-sm text-white/90">
+                        {d.path}
+                      </span>
+                      <span className="text-xs text-emerald-300 ml-2 shrink-0">
+                        {formatGB(d.free_bytes)} 可用
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {diskSuggestions && diskSuggestions.length === 0 && (
+                <div className="text-xs text-amber-300">
+                  未找到 30GB 以上可用空间的磁盘，请手动选择。
+                </div>
+              )}
+              <PrimaryButton variant="secondary" onClick={handleBrowseFolder}>
+                手动选择目录…
+              </PrimaryButton>
+            </div>
+          )}
+
+          {/* Step 1: Download offline package */}
+          {wizardStep === 1 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-blue-100">
+                下载离线安装包
+              </div>
+              <div className="text-xs text-blue-100/70 leading-relaxed">
+                游戏完整包约 70GB，建议通过离线包安装（比在线下载更快更稳定）。
+                请复制下方链接或在浏览器中打开，下载完成后进入下一步。
+              </div>
+              {dashboard?.offline_package_url ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10">
+                    <span className="text-xs font-mono text-white/70 truncate flex-1">
+                      {dashboard.offline_package_url}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <PrimaryButton
+                      variant="secondary"
+                      onClick={() =>
+                        handleCopyUrl(dashboard.offline_package_url)
+                      }
+                    >
+                      {copyFlash ? "已复制 ✓" : "复制链接"}
+                    </PrimaryButton>
+                    <PrimaryButton
+                      variant="primary"
+                      onClick={() =>
+                        openExternalUrl(dashboard.offline_package_url)
+                      }
+                    >
+                      在浏览器中打开
+                    </PrimaryButton>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-amber-300">
+                  离线包地址暂未配置，请联系管理员或直接跳过使用在线安装。
+                </div>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                <PrimaryButton
+                  variant="primary"
+                  onClick={() => setWizardStep(2)}
+                >
+                  已下载，进入下一步
+                </PrimaryButton>
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={() => setWizardStep(2)}
+                >
+                  跳过，稍后下载
+                </PrimaryButton>
               </div>
             </div>
-            <PrimaryButton
-              variant="primary"
-              onClick={() => onNavigate("settings")}
-            >
-              前往设置
-            </PrimaryButton>
-          </div>
+          )}
+
+          {/* Step 2: Import zip */}
+          {wizardStep === 2 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-blue-100">
+                导入离线安装包
+              </div>
+              <div className="text-xs text-blue-100/70 leading-relaxed">
+                选择已下载的离线包 zip 文件，启动器会自动解压到安装目录。
+              </div>
+              {showingProgress ? (
+                <InstallProgress
+                  progress={progress!}
+                  logs={installLogs}
+                  onCancel={handleCancelImport}
+                  paused={jobPaused}
+                />
+              ) : (
+                <div className="flex gap-2">
+                  <PrimaryButton
+                    variant="primary"
+                    onClick={handleWizardImportZip}
+                  >
+                    选择离线包 zip
+                  </PrimaryButton>
+                </div>
+              )}
+              {importError && (
+                <div className="text-xs text-red-300">
+                  导入失败：{importError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Verify */}
+          {wizardStep === 3 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-blue-100">
+                校验游戏文件
+              </div>
+              <div className="text-xs text-blue-100/70 leading-relaxed">
+                正在校验文件完整性，确保所有游戏文件与服务器一致。
+              </div>
+              {showingProgress ? (
+                <InstallProgress
+                  progress={progress!}
+                  logs={installLogs}
+                  onCancel={handleCancelImport}
+                  onTogglePause={
+                    activeJobPausable ? handleTogglePause : undefined
+                  }
+                  paused={jobPaused}
+                />
+              ) : (
+                <div className="text-xs text-emerald-300">
+                  校验完成，可以开始游戏了！
+                </div>
+              )}
+            </div>
+          )}
         </GlassCard>
       )}
 

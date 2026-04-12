@@ -2,6 +2,7 @@ use crate::config::LauncherSettings;
 use crate::error::{AppError, AppResult};
 use crate::state::LauncherState;
 use serde::{Deserialize, Serialize};
+use sysinfo::Disks;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
@@ -105,4 +106,60 @@ pub fn open_external_url(app: AppHandle, url: String) -> AppResult<()> {
         .open_url(url, None::<&str>)
         .map_err(|e| AppError::other(format!("打开链接失败: {}", e)))?;
     Ok(())
+}
+
+// ===== Disk suggestions =====
+
+const MIN_FREE_BYTES: u64 = 30 * 1024 * 1024 * 1024; // 30 GB
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskSuggestion {
+    pub path: String,
+    pub free_bytes: u64,
+}
+
+/// Return a list of suitable install locations sorted by preference:
+/// non-C drives first (by free space desc), then C drive last.
+#[tauri::command]
+pub fn suggest_install_path() -> Vec<DiskSuggestion> {
+    let disks = Disks::new_with_refreshed_list();
+    let mut suggestions: Vec<DiskSuggestion> = Vec::new();
+
+    for disk in disks.list() {
+        let mount = disk.mount_point();
+        let free = disk.available_space();
+        if free < MIN_FREE_BYTES {
+            continue;
+        }
+        let path_str = mount.display().to_string();
+        // Skip pseudo-filesystems (Linux /boot, /snap, etc.)
+        if cfg!(target_os = "linux")
+            && !mount.starts_with("/home")
+            && mount != std::path::Path::new("/")
+        {
+            continue;
+        }
+        suggestions.push(DiskSuggestion {
+            path: path_str,
+            free_bytes: free,
+        });
+    }
+
+    // Sort: non-C drives first by free space desc, C drive last.
+    suggestions.sort_by(|a, b| {
+        let a_is_c = is_c_drive(&a.path);
+        let b_is_c = is_c_drive(&b.path);
+        match (a_is_c, b_is_c) {
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            _ => b.free_bytes.cmp(&a.free_bytes),
+        }
+    });
+
+    suggestions
+}
+
+fn is_c_drive(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.starts_with("c:\\") || lower.starts_with("c:/") || lower == "c:"
 }

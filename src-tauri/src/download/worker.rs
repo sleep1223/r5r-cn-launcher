@@ -8,6 +8,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
@@ -40,9 +41,12 @@ pub async fn stream_download(
     } else {
         req
     };
-    let resp = req
-        .send()
+    // Timeout only covers connect + response headers (req.send() returns
+    // once headers arrive). Body streaming runs without timeout, managed
+    // by the cancel token, so large files are never cut short.
+    let resp = tokio::time::timeout(Duration::from_secs(15), req.send())
         .await
+        .map_err(|_| AppError::http(format!("GET {}: 服务器无响应 (15s)", url)))?
         .map_err(|e| AppError::http(format!("GET {}: {}", url, e)))?;
     if !resp.status().is_success() {
         return Err(AppError::http(format!(

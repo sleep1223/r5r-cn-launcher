@@ -1,12 +1,15 @@
 use crate::config::Channel;
 use crate::error::{AppError, AppResult};
 use reqwest::Client;
+use std::time::Duration;
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `GET {channel.game_url}/version.txt` — returns the version string with
 /// surrounding whitespace trimmed.
 pub async fn fetch_channel_version(client: &Client, channel: &Channel) -> AppResult<String> {
     let url = format!("{}/version.txt", channel.game_url.trim_end_matches('/'));
-    let req = client.get(&url);
+    let req = client.get(&url).timeout(REQUEST_TIMEOUT);
     let req = if channel.requires_key && !channel.key.is_empty() {
         req.header("channel-key", &channel.key)
     } else {

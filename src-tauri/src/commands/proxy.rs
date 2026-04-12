@@ -4,7 +4,7 @@ use crate::events::EVT_PROXY_CHANGED;
 use crate::proxy::ProxyMode;
 use crate::state::LauncherState;
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
@@ -56,7 +56,7 @@ pub async fn test_proxy(
 
     let client = state.http.read().await.client();
     let started = Instant::now();
-    let res = client.head(&url).send().await;
+    let res = client.head(&url).timeout(Duration::from_secs(5)).send().await;
     let latency_ms = started.elapsed().as_millis() as u64;
     match res {
         Ok(r) => Ok(ProxyTestResult {

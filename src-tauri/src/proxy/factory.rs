@@ -46,8 +46,7 @@ impl HttpClientFactory {
 fn build_client(mode: &ProxyMode, user_agent: &str) -> AppResult<Client> {
     let mut builder = Client::builder()
         .user_agent(user_agent)
-        .timeout(Duration::from_secs(300))
-        .connect_timeout(Duration::from_secs(15))
+        .connect_timeout(Duration::from_secs(5))
         .pool_idle_timeout(Some(Duration::from_secs(30)));
 
     match mode {

@@ -1,5 +1,5 @@
 import { invoke } from "./invoke";
-import { LauncherSettings, PathValidation } from "./types";
+import { DiskSuggestion, LauncherSettings, PathValidation } from "./types";
 
 export const loadSettings = () => invoke<LauncherSettings>("load_settings");
 
@@ -13,3 +13,6 @@ export const openLogFolder = () => invoke<void>("open_log_folder");
 
 export const openExternalUrl = (url: string) =>
   invoke<void>("open_external_url", { url });
+
+export const suggestInstallPath = () =>
+  invoke<DiskSuggestion[]>("suggest_install_path");

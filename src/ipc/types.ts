@@ -57,6 +57,11 @@ export interface DashboardConfig {
   rules: DashboardRule[];
 }
 
+export interface DiskSuggestion {
+  path: string;
+  free_bytes: number;
+}
+
 export interface PathValidation {
   ok: boolean;
   normalized: string;
