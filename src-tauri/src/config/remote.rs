@@ -1,27 +1,8 @@
-//! Wire-compatible mirror of the official R5Reloaded `RemoteConfig` schema.
-//! The official launcher emits camelCase JSON keys; we use serde renames so
-//! Rust-side code can use idiomatic snake_case while still being able to
-//! consume an unmodified `config.json` from the official CDN.
+//! Channel definition for mirror-based downloads.
+//! Since v0.7.0 we no longer fetch a `config.json` — the mirror domain plus
+//! a channel name is enough to construct all URLs.
 
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RemoteConfig {
-    #[serde(default, rename = "launcherVersion")]
-    pub launcher_version: String,
-    #[serde(default, rename = "updaterVersion")]
-    pub updater_version: String,
-    #[serde(default, rename = "selfUpdater")]
-    pub self_updater: String,
-    #[serde(default, rename = "backgroundVideo")]
-    pub background_video: String,
-    #[serde(default, rename = "allowUpdates")]
-    pub allow_updates: bool,
-    #[serde(default, rename = "forceUpdates")]
-    pub force_updates: bool,
-    #[serde(default)]
-    pub channels: Vec<Channel>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Channel {
@@ -44,7 +25,25 @@ fn default_true() -> bool {
     true
 }
 
+/// The only channel we currently serve.
+pub const DEFAULT_CHANNEL: &str = "live_game";
+
 impl Channel {
+    /// Build a `Channel` from a mirror domain and a channel name.
+    /// URLs are `https://{domain}/launcher/{channel_name}/...`.
+    pub fn from_domain(domain: &str, channel_name: &str) -> Self {
+        let domain = domain.trim().trim_end_matches('/');
+        Self {
+            name: channel_name.to_string(),
+            game_url: format!("https://{}/launcher/{}", domain, channel_name),
+            dedi_url: String::new(),
+            enabled: true,
+            requires_key: false,
+            allow_updates: true,
+            key: String::new(),
+        }
+    }
+
     /// Folder name on disk for this channel — `R5R Library/<NAME_UPPERCASE>/`.
     pub fn folder_name(&self) -> String {
         self.name.to_uppercase()

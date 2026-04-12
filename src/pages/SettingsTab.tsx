@@ -57,7 +57,7 @@ export function SettingsTab() {
   const { settings, loading, error, update, reload } = useSettings();
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
-  const [rootConfigUrl, setRootConfigUrl] = useState("");
+  const [mirrorDomain, setMirrorDomain] = useState("");
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
@@ -84,7 +84,7 @@ export function SettingsTab() {
     setProxyUrl(
       settings.proxy_mode.kind === "custom" ? settings.proxy_mode.url : "",
     );
-    setRootConfigUrl(settings.root_config_url);
+    setMirrorDomain(settings.mirror_domain);
     setUpdateStrategy(settings.update_strategy);
     setLibraryRoot(settings.library_root);
     setConcurrency(settings.concurrent_downloads);
@@ -184,11 +184,7 @@ export function SettingsTab() {
     setBusy("test");
     setProxyResult(null);
     try {
-      // Use whatever the user is currently typing in the mirror field — they
-      // shouldn't have to hit Save just to verify a URL works. The backend
-      // falls back to the official R5R URL if both override and saved are
-      // empty, which lets users sanity-check their proxy out of the box.
-      const r = await testProxy(rootConfigUrl.trim() || undefined);
+      const r = await testProxy(mirrorDomain.trim() || undefined);
       setProxyResult(r);
     } catch (e) {
       setProxyResult({
@@ -229,18 +225,18 @@ export function SettingsTab() {
     if (pathErrors.length > 0) return;
 
     const nextProxy = buildProxyMode();
-    const trimmedConfigUrl = rootConfigUrl.trim();
+    const trimmedDomain = mirrorDomain.trim();
 
     const proxyChanged =
       JSON.stringify(nextProxy) !== JSON.stringify(settings.proxy_mode);
-    const configUrlChanged = trimmedConfigUrl !== settings.root_config_url;
+    const domainChanged = trimmedDomain !== settings.mirror_domain;
     const libraryRootChanged = libraryRoot !== settings.library_root;
     const concurrencyChanged = concurrency !== settings.concurrent_downloads;
     const updateStrategyChanged = updateStrategy !== settings.update_strategy;
 
     if (
       !proxyChanged &&
-      !configUrlChanged &&
+      !domainChanged &&
       !libraryRootChanged &&
       !concurrencyChanged &&
       !updateStrategyChanged
@@ -252,14 +248,12 @@ export function SettingsTab() {
       setBusy("autosave");
       setSaveError(null);
       try {
-        // Apply proxy first so a failed rebuild surfaces before we touch the
-        // rest of the settings file.
         if (proxyChanged) {
           await setProxyMode(nextProxy);
         }
         await update({
           proxy_mode: nextProxy,
-          root_config_url: trimmedConfigUrl,
+          mirror_domain: trimmedDomain,
           library_root: libraryRoot,
           concurrent_downloads: concurrency,
           update_strategy: updateStrategy,
@@ -277,7 +271,7 @@ export function SettingsTab() {
   }, [
     proxyKind,
     proxyUrl,
-    rootConfigUrl,
+    mirrorDomain,
     updateStrategy,
     libraryRoot,
     concurrency,
@@ -339,7 +333,7 @@ export function SettingsTab() {
               {busy === "test" ? "测试中…" : "测试连通性"}
             </PrimaryButton>
             <span className="text-xs text-white/40 self-center">
-              未填写镜像源时会用官方 URL 进行测试。
+              未填写镜像源时会用官方 CDN 进行测试。
             </span>
           </div>
           {proxyResult && (
@@ -363,14 +357,19 @@ export function SettingsTab() {
         <SectionHeader
           icon="🪞"
           title="镜像源"
-          subtitle="镜像 config.json 的完整 URL（与官方 RemoteConfig 同结构）。修改后会自动保存，无需手动保存。"
+          subtitle="镜像 CDN 域名，修改后会自动保存。"
         />
         <input
-          type="url"
-          placeholder="https://cdn.r5r.org/launcher/config.json"
-          value={rootConfigUrl}
-          onChange={(e) => setRootConfigUrl(e.target.value)}
+          type="text"
+          placeholder="cdn-r5r-org.sleep0.de"
+          value={mirrorDomain}
+          onChange={(e) => setMirrorDomain(e.target.value)}
         />
+        {mirrorDomain.trim() && (
+          <div className="text-xs text-white/40 mt-1 font-mono">
+            校验文件：https://{mirrorDomain.trim()}/launcher/live_game/checksums.json
+          </div>
+        )}
       </GlassCard>
 
       {/* 更新方式 */}

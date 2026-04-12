@@ -19,7 +19,6 @@ pub fn new_job_id() -> InstallJobId {
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum InstallPhase {
     Preparing,
-    FetchingConfig,
     FetchingManifest,
     Scanning,
     Downloading,

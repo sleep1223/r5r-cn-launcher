@@ -1,5 +1,5 @@
-use crate::config::fetch::{fetch_channel_version, fetch_remote_config};
-use crate::config::{Channel, RemoteConfig, UpdateStrategy};
+use crate::config::fetch::fetch_channel_version;
+use crate::config::{Channel, UpdateStrategy};
 use crate::download::chunk::download_chunked;
 use crate::download::progress::ProgressAggregator;
 use crate::download::retry::RetryPolicy;
@@ -78,11 +78,11 @@ pub async fn run_install(
     emit(InstallPhase::Preparing);
     emit_log(&app, &job_id, LogLevel::Info, format!("开始安装频道 {}", channel_name));
 
-    // 1. Resolve config + channel.
-    let (root_url, library_root, languages_wanted, concurrent_downloads, update_strategy) = {
+    // 1. Resolve channel from mirror domain.
+    let (mirror_domain, library_root, languages_wanted, concurrent_downloads, update_strategy) = {
         let s = state.settings.read();
         (
-            s.root_config_url.clone(),
+            s.mirror_domain.clone(),
             s.library_root.clone(),
             vec!["schinese".to_string()],
             s.concurrent_downloads.max(1),
@@ -97,40 +97,22 @@ pub async fn run_install(
             "当前更新策略为「补丁包」，但补丁路径暂未实现，回退到完整校验",
         );
     }
-    if root_url.is_empty() {
-        return Err(AppError::settings("尚未配置镜像 config.json 地址"));
+    if mirror_domain.is_empty() {
+        return Err(AppError::settings("尚未配置镜像源域名"));
     }
     if library_root.is_empty() {
         return Err(AppError::settings("尚未配置安装根目录"));
     }
 
-    let client: Client = state.http.read().await.client();
-    emit(InstallPhase::FetchingConfig);
-    emit_log(&app, &job_id, LogLevel::Info, format!("拉取镜像 config.json: {}", root_url));
-    // Wrap the HTTP fetches in `tokio::select!` against the cancel token so
-    // clicking 取消 immediately unblocks even when reqwest is hung waiting on a
-    // slow/dead mirror. Without this, the user would stare at "拉取 config"
-    // until reqwest's 300s read timeout fired.
-    let cfg: RemoteConfig = tokio::select! {
-        biased;
-        _ = cancel.cancelled() => {
-            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
-            emit(InstallPhase::Cancelled);
-            return Err(AppError::Cancelled);
-        }
-        r = fetch_remote_config(&client, &root_url) => r?,
-    };
-    let channel: Channel = cfg
-        .channels
-        .into_iter()
-        .find(|c| c.name == channel_name)
-        .ok_or_else(|| AppError::NotFound(format!("频道 {}", channel_name)))?;
+    let channel = Channel::from_domain(&mirror_domain, &channel_name);
     emit_log(
         &app,
         &job_id,
         LogLevel::Info,
-        format!("解析到频道 {} (game_url={})", channel.name, channel.game_url),
+        format!("频道 {} (game_url={})", channel.name, channel.game_url),
     );
+
+    let client: Client = state.http.read().await.client();
 
     // 2. Resolve install dir.
     let install_dir = PathBuf::from(&library_root)

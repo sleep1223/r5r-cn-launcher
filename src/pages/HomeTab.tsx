@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import clsx from "clsx";
 import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { InstallProgress } from "../components/InstallProgress";
@@ -8,7 +7,6 @@ import { useLaunchExited } from "../hooks/useLaunchExited";
 import { useInstallLog, useInstallProgress } from "../hooks/useInstallProgress";
 import { useAccelerators } from "../hooks/useAccelerators";
 import { autoAdoptExistingInstall, detectExistingR5R } from "../ipc/detect";
-import { fetchRemoteConfig } from "../ipc/config";
 import { fetchDashboardConfig } from "../ipc/dashboard";
 import { openExternalUrl } from "../ipc/settings";
 import { detectAccelerators } from "../ipc/accelerator";
@@ -27,7 +25,6 @@ import {
   DashboardConfig,
   DetectedInstall,
   LaunchOptionSelection,
-  RemoteConfig,
 } from "../ipc/types";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { TabId } from "../components/Sidebar";
@@ -41,9 +38,6 @@ interface Props {
 export function HomeTab({ onNavigate }: Props) {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
-  const [config, setConfig] = useState<RemoteConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchedPid, setLaunchedPid] = useState<number | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -201,35 +195,16 @@ export function HomeTab({ onNavigate }: Props) {
     }
   };
 
-  // Fetch the remote config whenever the URL changes.
+  // Auto-select the default channel if none is set.
   useEffect(() => {
-    if (!settings?.root_config_url) {
-      setConfig(null);
-      setConfigError(null);
-      return;
-    }
-    (async () => {
-      setRefreshing(true);
-      setConfigError(null);
-      try {
-        const c = await fetchRemoteConfig();
-        setConfig(c);
-        if (!settings.selected_channel && c.channels.length > 0) {
-          const first = c.channels.find((ch) => ch.enabled) ?? c.channels[0];
-          await update({ selected_channel: first.name });
-        }
-      } catch (e) {
-        setConfigError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setRefreshing(false);
-      }
-    })();
+    if (!settings?.mirror_domain || settings.selected_channel) return;
+    update({ selected_channel: "live_game" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.root_config_url]);
+  }, [settings?.mirror_domain, settings?.selected_channel]);
 
   // Check for updates when channel/install state changes.
   useEffect(() => {
-    if (!settings?.selected_channel || !settings?.root_config_url) {
+    if (!settings?.selected_channel || !settings?.mirror_domain) {
       setUpdateAvailable(null);
       return;
     }
@@ -247,7 +222,7 @@ export function HomeTab({ onNavigate }: Props) {
         setUpdateAvailable(null);
       }
     })();
-  }, [settings?.selected_channel, settings?.channels, settings?.root_config_url]);
+  }, [settings?.selected_channel, settings?.channels, settings?.mirror_domain]);
 
   // When an install completes, reload settings (so installed/version flips).
   useEffect(() => {
@@ -302,7 +277,7 @@ export function HomeTab({ onNavigate }: Props) {
     // launching from it over going through install/update flows — the user
     // already has the game on disk, no need to re-download via the mirror.
     if (launchableDetected) return "play";
-    if (!settings.root_config_url || !settings.library_root) {
+    if (!settings.mirror_domain || !settings.library_root) {
       // Not configured for online install — but if a detected install exists,
       // user can still launch the game using compose options.
       if (detected && detected.length > 0) return "play";
@@ -586,60 +561,26 @@ export function HomeTab({ onNavigate }: Props) {
               社区服专用 · 镜像加速 · 一键启动。
             </div>
 
-            {config && (
+            {settings?.mirror_domain && (
               <div className="mt-6 space-y-3">
-                {/* Channel picker — segmented pill row, one button per
-                    channel. Each button shows the channel name and an
-                    installed-state dot. Disabled channels are faded and
-                    not clickable. */}
+                {/* Channel badge */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] uppercase tracking-[0.18em] text-white/40 mr-1">
                     频道
                   </span>
-                  {config.channels.map((c) => {
-                    const isSelected = settings?.selected_channel === c.name;
-                    const channelInstalled =
-                      !!settings?.channels[c.name]?.installed;
-                    return (
-                      <button
-                        key={c.name}
-                        type="button"
-                        disabled={!c.enabled}
-                        onClick={() => update({ selected_channel: c.name })}
-                        className={clsx(
-                          "group relative px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-2",
-                          !c.enabled &&
-                            "opacity-40 cursor-not-allowed border-white/10 bg-white/[0.02] text-white/45",
-                          c.enabled && isSelected &&
-                            "border-blue-400/60 bg-blue-400/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
-                          c.enabled && !isSelected &&
-                            "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06] hover:border-white/20",
-                        )}
-                      >
-                        {/* Status dot — green = installed locally, hollow
-                            ring = available, lock = disabled. */}
-                        {!c.enabled ? (
-                          <span className="text-[10px]">🔒</span>
-                        ) : channelInstalled ? (
-                          <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
-                        ) : (
-                          <span className="size-1.5 rounded-full border border-white/40" />
-                        )}
-                        <span className="font-mono tracking-wide">
-                          {c.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {refreshing && (
-                    <span className="text-xs text-white/40 ml-1">
-                      <span className="inline-block size-1.5 rounded-full bg-blue-400 animate-pulse mr-1.5 align-middle" />
-                      刷新中…
+                  <span className="px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-400/60 bg-blue-400/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex items-center gap-2">
+                    {installed ? (
+                      <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
+                    ) : (
+                      <span className="size-1.5 rounded-full border border-white/40" />
+                    )}
+                    <span className="font-mono tracking-wide">
+                      {settings?.selected_channel || "live_game"}
                     </span>
-                  )}
+                  </span>
                 </div>
 
-                {/* Version readout — local · remote · 有更新 / 已是最新. */}
+                {/* Version readout */}
                 {(installed || remoteVersion || dashboard?.game_version) && (
                   <div className="flex items-center gap-3 flex-wrap text-[11px] font-mono tabular-nums">
                     {installed && (
@@ -676,11 +617,6 @@ export function HomeTab({ onNavigate }: Props) {
               </div>
             )}
 
-            {configError && (
-              <div className="mt-4 text-xs px-3 py-2 rounded-lg bg-red-500/10 text-red-300 max-w-xl">
-                获取镜像 config 失败：{configError}
-              </div>
-            )}
           </div>
 
           {showingProgress ? (

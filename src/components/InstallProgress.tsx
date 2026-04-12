@@ -15,7 +15,6 @@ interface Props {
 
 const PHASE_LABELS: Record<string, string> = {
   preparing: "准备中",
-  fetching_config: "拉取镜像 config 中",
   fetching_manifest: "拉取游戏 manifest 中",
   scanning: "校验已下载文件中",
   downloading: "下载/复制中",

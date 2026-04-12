@@ -1,4 +1,5 @@
-use crate::config::fetch::{fetch_channel_version, fetch_remote_config};
+use crate::config::fetch::fetch_channel_version;
+use crate::config::Channel;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
 use crate::events::{new_job_id, InstallJobId};
@@ -163,14 +164,9 @@ pub async fn check_update(
     state: State<'_, LauncherState>,
     channel: String,
 ) -> AppResult<UpdateStatus> {
-    let root_url = state.settings.read().root_config_url.clone();
+    let domain = state.settings.read().mirror_domain.clone();
+    let ch = Channel::from_domain(&domain, &channel);
     let client = state.http.read().await.client();
-    let cfg = fetch_remote_config(&client, &root_url).await?;
-    let ch = cfg
-        .channels
-        .into_iter()
-        .find(|c| c.name == channel)
-        .ok_or_else(|| AppError::NotFound(format!("频道 {}", channel)))?;
     let remote_version = fetch_channel_version(&client, &ch).await?;
     let local_version = state
         .settings
@@ -210,8 +206,8 @@ async fn spawn_pipeline(
                 "安装根目录不能包含中文或非 ASCII 字符".into(),
             ));
         }
-        if s.root_config_url.is_empty() {
-            return Err(AppError::settings("尚未配置镜像 config.json 地址"));
+        if s.mirror_domain.is_empty() {
+            return Err(AppError::settings("尚未配置镜像源域名"));
         }
     }
 

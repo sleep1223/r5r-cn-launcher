@@ -1,29 +1,6 @@
-use crate::config::{Channel, RemoteConfig};
+use crate::config::Channel;
 use crate::error::{AppError, AppResult};
 use reqwest::Client;
-
-/// Fetch the launcher root config from the user's mirror.
-pub async fn fetch_remote_config(client: &Client, url: &str) -> AppResult<RemoteConfig> {
-    if url.is_empty() {
-        return Err(AppError::settings("尚未配置镜像 config.json 地址"));
-    }
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| AppError::http(format!("获取 config.json 失败: {}", e)))?;
-    if !resp.status().is_success() {
-        return Err(AppError::http(format!(
-            "镜像返回 HTTP {}",
-            resp.status().as_u16()
-        )));
-    }
-    let cfg: RemoteConfig = resp
-        .json()
-        .await
-        .map_err(|e| AppError::http(format!("解析 config.json 失败: {}", e)))?;
-    Ok(cfg)
-}
 
 /// `GET {channel.game_url}/version.txt` — returns the version string with
 /// surrounding whitespace trimmed.

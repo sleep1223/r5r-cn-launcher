@@ -17,7 +17,7 @@ export type UpdateStrategy = "verify" | "patch";
 export interface LauncherSettings {
   schema_version: number;
   proxy_mode: ProxyMode;
-  root_config_url: string;
+  mirror_domain: string;
   library_root: string;
   selected_channel: string;
   concurrent_downloads: number;
@@ -80,26 +80,6 @@ export interface DetectedInstall {
   version: string | null;
   /** True when `<path>/r5apex.exe` exists — safe to launch directly from `path`. */
   has_game: boolean;
-}
-
-export interface RemoteChannel {
-  name: string;
-  game_url: string;
-  dedi_url: string;
-  enabled: boolean;
-  requires_key: boolean;
-  allow_updates: boolean;
-  key: string;
-}
-
-export interface RemoteConfig {
-  launcher_version: string;
-  updater_version: string;
-  self_updater: string;
-  background_video: string;
-  allow_updates: boolean;
-  force_updates: boolean;
-  channels: RemoteChannel[];
 }
 
 // ===== Launch options =====
@@ -177,7 +157,6 @@ export interface LaunchExitedEvent {
 
 export type InstallPhase =
   | { phase: "preparing" }
-  | { phase: "fetching_config" }
   | { phase: "fetching_manifest" }
   | { phase: "scanning" }
   | { phase: "downloading" }

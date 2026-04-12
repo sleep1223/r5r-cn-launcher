@@ -28,8 +28,10 @@ pub struct LauncherSettings {
     #[serde(default)]
     pub proxy_mode: ProxyMode,
 
-    #[serde(default = "default_root_config_url")]
-    pub root_config_url: String,
+    /// Mirror CDN domain (e.g. `cdn-r5r-org.sleep0.de`). URLs are built as
+    /// `https://{mirror_domain}/launcher/{channel}/checksums.json`.
+    #[serde(default = "default_mirror_domain", alias = "root_config_url")]
+    pub mirror_domain: String,
 
     /// Where the user wants `R5R Library/` to live. The actual install dir is
     /// `library_root/R5R Library/<CHANNEL>/`.
@@ -70,7 +72,7 @@ impl Default for LauncherSettings {
         Self {
             schema_version: CURRENT_SCHEMA,
             proxy_mode: ProxyMode::default(),
-            root_config_url: default_root_config_url(),
+            mirror_domain: default_mirror_domain(),
             library_root: String::new(),
             selected_channel: String::new(),
             concurrent_downloads: default_concurrency(),
@@ -98,17 +100,14 @@ pub struct PerChannelState {
 fn default_schema() -> u32 {
     CURRENT_SCHEMA
 }
-/// Default mirror config URL. Points at the community CN mirror so users can
-/// install out-of-the-box without first hunting down a working URL. Users
-/// behind a different mirror are still free to override this in settings.
-pub const DEFAULT_MIRROR_CONFIG_URL: &str = "https://cdn-r5r-org.sleep0.de/launcher/config.json";
+/// Default mirror CDN domain. Users behind a different mirror can override.
+pub const DEFAULT_MIRROR_DOMAIN: &str = "cdn-r5r-org.sleep0.de";
 
-/// Official R5Reloaded config URL — used as a connectivity-test target when
-/// the user hasn't filled in any mirror URL yet.
-pub const OFFICIAL_CONFIG_URL: &str = "https://cdn.r5r.org/launcher/config.json";
+/// Official R5Reloaded CDN domain — used as a connectivity-test fallback.
+pub const OFFICIAL_DOMAIN: &str = "cdn.r5r.org";
 
-fn default_root_config_url() -> String {
-    DEFAULT_MIRROR_CONFIG_URL.to_string()
+fn default_mirror_domain() -> String {
+    DEFAULT_MIRROR_DOMAIN.to_string()
 }
 fn default_concurrency() -> u32 {
     4
@@ -142,10 +141,18 @@ impl LauncherSettings {
     }
 
     fn migrate(&mut self) {
-        // Future schema migrations live here. For now we just stamp the current
-        // version on any file that didn't have one.
         if self.schema_version == 0 {
             self.schema_version = CURRENT_SCHEMA;
+        }
+        // v1→v2: root_config_url (full URL) was replaced by mirror_domain.
+        // serde(alias) already deserializes the old key into mirror_domain,
+        // but the value might still be a full URL — strip it down to just the host.
+        if self.mirror_domain.starts_with("http://") || self.mirror_domain.starts_with("https://") {
+            if let Ok(url) = url::Url::parse(&self.mirror_domain) {
+                if let Some(host) = url.host_str() {
+                    self.mirror_domain = host.to_string();
+                }
+            }
         }
     }
 

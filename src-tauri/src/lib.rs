@@ -131,7 +131,6 @@ pub fn run() {
             commands::proxy::test_proxy,
             commands::detect::detect_existing_r5r,
             commands::detect::auto_adopt_existing_install,
-            commands::config::fetch_remote_config_cmd,
             commands::config::get_channel_version,
             commands::dashboard::fetch_dashboard_config_cmd,
             commands::launch_options::get_launch_option_catalog,
