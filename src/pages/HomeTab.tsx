@@ -483,11 +483,18 @@ export function HomeTab({ onUpdateDetected }: Props) {
 
   // Derive the detected install's library_root (if any).
   const detectedRoot = (() => {
-    const d = detected?.find((d) => d.has_game);
-    if (!d) return null;
-    const segs = d.path.replace(/\\/g, "/").split("/");
-    const libIdx = segs.findIndex((s) => s.toLowerCase() === "r5r library");
-    return libIdx > 0 ? segs.slice(0, libIdx).join("\\") : null;
+    if (!detected || detected.length === 0) return null;
+    // Prefer a hit that has r5apex.exe and contains "R5R Library" in path.
+    for (const d of detected) {
+      const segs = d.path.replace(/\\/g, "/").split("/");
+      const libIdx = segs.findIndex((s) => s.toLowerCase() === "r5r library");
+      if (libIdx > 0) return segs.slice(0, libIdx).join("\\");
+    }
+    // Fallback: registry/shortcut hit points at the base install dir
+    // (e.g. "D:\Program Files\R5Reloaded") — use it directly as library_root.
+    const first = detected[0];
+    if (first) return first.path.replace(/[\\/]+$/, "");
+    return null;
   })();
 
   // Pre-select: prefer detected install, else first disk with enough space.

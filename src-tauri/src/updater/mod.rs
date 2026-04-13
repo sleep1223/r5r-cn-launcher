@@ -125,6 +125,7 @@ pub fn run_installer_and_exit(path: &std::path::Path) -> AppResult<()> {
     tracing::info!(target: "updater", "launching silent installer: {}", path.display());
     Command::new(path)
         .arg("/S") // NSIS silent install
+        .arg("--launch-on-exit") // relaunch app after install completes
         .spawn()
         .map_err(|e| AppError::other(format!("启动安装程序失败: {}", e)))?;
     // Give the installer a moment to start before we exit.
