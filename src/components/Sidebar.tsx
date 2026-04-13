@@ -1,6 +1,14 @@
 import clsx from "clsx";
 
-export type TabId = "home" | "launch_options" | "settings" | "about";
+export type TabId =
+  | "home"
+  | "servers"
+  | "leaderboard"
+  | "teams"
+  | "profile"
+  | "launch_options"
+  | "settings"
+  | "about";
 
 interface Props {
   active: TabId;
@@ -9,6 +17,10 @@ interface Props {
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "home", label: "首页", icon: "▶" },
+  { id: "servers", label: "服务器", icon: "☁" },
+  { id: "leaderboard", label: "排行榜", icon: "♛" },
+  { id: "teams", label: "组队", icon: "♟" },
+  { id: "profile", label: "我的", icon: "☺" },
   { id: "launch_options", label: "启动项", icon: "⚙" },
   { id: "settings", label: "设置", icon: "✦" },
   { id: "about", label: "关于", icon: "ⓘ" },
@@ -25,15 +37,15 @@ export function Sidebar({ active, onChange }: Props) {
           key={t.id}
           onClick={() => onChange(t.id)}
           className={clsx(
-            "w-16 h-16 rounded-xl flex flex-col items-center justify-center gap-1 transition-all",
+            "w-16 h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all",
             "hover:bg-white/5",
             active === t.id
               ? "bg-white/8 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
               : "text-white/55",
           )}
         >
-          <span className="text-lg leading-none">{t.icon}</span>
-          <span className="text-[11px] leading-none">{t.label}</span>
+          <span className="text-base leading-none">{t.icon}</span>
+          <span className="text-[10px] leading-none">{t.label}</span>
         </button>
       ))}
       <div className="flex-1" />

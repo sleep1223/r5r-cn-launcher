@@ -27,6 +27,7 @@ import {
   DiskSuggestion,
   LaunchOptionSelection,
 } from "../ipc/types";
+import { getServers, ServerListItem } from "../api";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { LauncherUpdateInfo } from "../App";
 
@@ -50,6 +51,11 @@ export function HomeTab({ onUpdateDetected }: Props) {
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
+  const [serverStats, setServerStats] = useState<{
+    servers: number;
+    players: number;
+    regions: number;
+  } | null>(null);
   // Flips true once the auto-adopt effect has finished (adopted or not).
   // We use this to suppress the onboarding card until we know whether the
   // backend will populate `library_root` from a detected official install.
@@ -139,6 +145,23 @@ export function HomeTab({ onUpdateDetected }: Props) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetch server stats for the hero card.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await getServers();
+        if (cancelled) return;
+        const players = data.reduce((s: number, sv: ServerListItem) => s + sv.player_count, 0);
+        const regions = new Set(data.map((s: ServerListItem) => s.region).filter(Boolean)).size;
+        setServerStats({ servers: data.length, players, regions });
+      } catch { /* silent */ }
+    };
+    load();
+    const t = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
   }, []);
 
   // Check for launcher self-update once the dashboard data arrives.
@@ -867,7 +890,12 @@ export function HomeTab({ onUpdateDetected }: Props) {
               R5R 中国镜像启动器
             </div>
             <div className="text-white/60 mt-2 max-w-xl">
-              社区服专用 · 镜像加速 · 一键启动。
+              社区服专用 · 镜像加速 · 一键启动
+              {serverStats && (
+                <span className="ml-3 text-white/50">
+                  {serverStats.servers} 服务器 · {serverStats.players} 在线 · {serverStats.regions} 地区
+                </span>
+              )}
             </div>
 
             {settings?.mirror_domain && (

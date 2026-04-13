@@ -58,6 +58,14 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # Process enumeration — used by accelerator/ to scan for UU/AK/VK etc.
 sysinfo = { version = "0.32", default-features = false, features = ["system", "disk"] }
 
+[profile.release]
+# thin LTO is much faster to compile than fat LTO while still producing
+# good binary size / performance. codegen-units=1 is the Tauri default
+# but slows CI significantly — 4 is a good balance.
+lto = "thin"
+codegen-units = 4
+strip = true
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
 lnk = "0.5"
