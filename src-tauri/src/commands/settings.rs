@@ -94,6 +94,19 @@ pub fn open_log_folder(app: AppHandle) -> AppResult<()> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn open_config_folder(app: AppHandle) -> AppResult<()> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| AppError::other(format!("无法解析配置目录: {}", e)))?;
+    std::fs::create_dir_all(&dir).ok();
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(|e| AppError::other(format!("打开配置目录失败: {}", e)))?;
+    Ok(())
+}
+
 /// Open an arbitrary external URL in the user's default browser. Routed
 /// through Rust so we don't need to grant the frontend a generic
 /// `opener:allow-open-url` capability.

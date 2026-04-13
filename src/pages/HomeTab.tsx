@@ -10,7 +10,7 @@ import { autoAdoptExistingInstall, detectExistingR5R } from "../ipc/detect";
 import { fetchDashboardConfig } from "../ipc/dashboard";
 import { openExternalUrl, suggestInstallPath } from "../ipc/settings";
 import { detectAccelerators } from "../ipc/accelerator";
-import { getLauncherVersion, downloadAndApplyUpdate } from "../ipc/updater";
+import { getLauncherVersion } from "../ipc/updater";
 import { launchGame } from "../ipc/launch";
 import {
   cancelInstall,
@@ -28,9 +28,15 @@ import {
   LaunchOptionSelection,
 } from "../ipc/types";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
+import type { LauncherUpdateInfo } from "../App";
+
 type Action = "install" | "update" | "play" | "blocked";
 
-export function HomeTab() {
+interface Props {
+  onUpdateDetected: (info: LauncherUpdateInfo) => void;
+}
+
+export function HomeTab({ onUpdateDetected }: Props) {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -44,20 +50,17 @@ export function HomeTab() {
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
-  const [launcherUpdate, setLauncherUpdate] = useState<{
-    version: string;
-    url: string;
-    force: boolean;
-  } | null>(null);
-  const [updating, setUpdating] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
   // Flips true once the auto-adopt effect has finished (adopted or not).
   // We use this to suppress the onboarding card until we know whether the
   // backend will populate `library_root` from a detected official install.
   const [autoAdoptChecked, setAutoAdoptChecked] = useState(false);
   // Onboarding wizard state
   const [wizardStep, setWizardStep] = useState(0); // 0=dir, 1=download, 2=import, 3=verify
-  const [diskSuggestions, setDiskSuggestions] = useState<DiskSuggestion[] | null>(null);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
+  const [wizardSelectedPath, setWizardSelectedPath] = useState<string | null>(null);
+  const [diskSuggestions, setDiskSuggestions] = useState<
+    DiskSuggestion[] | null
+  >(null);
   const [copyFlash, setCopyFlash] = useState(false);
   const exited = useLaunchExited();
   const progress = useInstallProgress();
@@ -139,6 +142,8 @@ export function HomeTab() {
   }, []);
 
   // Check for launcher self-update once the dashboard data arrives.
+  // If a newer version is found, notify the parent (App) which navigates
+  // to the About tab where the update UI lives.
   useEffect(() => {
     if (!dashboard) return;
     if (!dashboard.launcher_version || !dashboard.launcher_update_url) return;
@@ -147,9 +152,7 @@ export function HomeTab() {
       try {
         const { current } = await getLauncherVersion();
         if (cancelled) return;
-        // Simple semver: split into [major, minor, patch] and compare.
-        const parse = (s: string) =>
-          s.replace(/^v/, "").split(".").map(Number);
+        const parse = (s: string) => s.replace(/^v/, "").split(".").map(Number);
         const c = parse(current);
         const r = parse(dashboard.launcher_version);
         const isNewer =
@@ -157,7 +160,7 @@ export function HomeTab() {
           (r[0] === c[0] && r[1] > c[1]) ||
           (r[0] === c[0] && r[1] === c[1] && r[2] > c[2]);
         if (isNewer) {
-          setLauncherUpdate({
+          onUpdateDetected({
             version: dashboard.launcher_version,
             url: dashboard.launcher_update_url,
             force: dashboard.force_update,
@@ -170,29 +173,8 @@ export function HomeTab() {
     return () => {
       cancelled = true;
     };
-  }, [dashboard]);
-
-  // If force_update is set and a valid update URL exists, auto-start the
-  // update immediately — the user cannot skip.
-  useEffect(() => {
-    if (!launcherUpdate?.force || updating) return;
-    if (!launcherUpdate.url) return;
-    handleApplyUpdate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launcherUpdate]);
-
-  const handleApplyUpdate = async () => {
-    if (!launcherUpdate?.url) return;
-    setUpdating(true);
-    setUpdateError(null);
-    try {
-      await downloadAndApplyUpdate(launcherUpdate.url);
-      // If we get here the backend failed to exit (macOS). Show a message.
-    } catch (e) {
-      setUpdateError(e instanceof Error ? e.message : String(e));
-      setUpdating(false);
-    }
-  };
+  }, [dashboard]);
 
   // Auto-select the default channel if none is set.
   useEffect(() => {
@@ -338,7 +320,11 @@ export function HomeTab() {
               items: {},
             };
           const channel = settings.selected_channel || "LIVE";
-          const pid = await launchGame(channel, sel, launchableDir ?? undefined);
+          const pid = await launchGame(
+            channel,
+            sel,
+            launchableDir ?? undefined,
+          );
           setLaunchedPid(pid);
           break;
         }
@@ -457,34 +443,12 @@ export function HomeTab() {
     }
   };
 
-  // Force-update blocking overlay: covers the entire page so the user
-  // cannot interact with anything until the update finishes.
-  if (launcherUpdate?.force && updating) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <GlassCard className="max-w-md text-center">
-          <div className="text-xl font-semibold mb-3">正在更新启动器…</div>
-          <div className="text-sm text-white/60 mb-4">
-            新版本 {launcherUpdate.version} 正在下载并安装，完成后启动器将自动重启。
-          </div>
-          <div className="h-2 rounded-full bg-white/8 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-400 to-emerald-400 animate-pulse" />
-          </div>
-          {updateError && (
-            <div className="text-xs text-red-300 mt-3">更新失败：{updateError}</div>
-          )}
-        </GlassCard>
-      </div>
-    );
-  }
+
 
   // The onboarding wizard shows when: auto-adopt is done, no detected
   // launchable install, and the game is not installed via our launcher.
   const needsOnboarding =
-    !!settings &&
-    autoAdoptChecked &&
-    !launchableDetected &&
-    !installed;
+    !!settings && autoAdoptChecked && !launchableDetected && !installed;
 
   // Fetch disk suggestions when entering the wizard.
   useEffect(() => {
@@ -494,12 +458,30 @@ export function HomeTab() {
       .catch(() => setDiskSuggestions([]));
   }, [needsOnboarding]);
 
-  // Auto-advance wizard: step 0→1 once library_root is set.
+  // Pre-select the first detected install path if available.
   useEffect(() => {
-    if (needsOnboarding && settings?.library_root && wizardStep === 0) {
-      setWizardStep(1);
+    if (needsOnboarding && wizardStep === 0 && !wizardSelectedPath) {
+      // Prefer a detected R5Reloaded install path (derive library_root).
+      const detectedWithGame = detected?.find((d) => d.has_game);
+      if (detectedWithGame) {
+        // Walk up from e.g. "D:\...\R5R Library\LIVE" to get the root
+        // above "R5R Library".
+        const segs = detectedWithGame.path.replace(/\\/g, "/").split("/");
+        const libIdx = segs.findIndex(
+          (s) => s.toLowerCase() === "r5r library",
+        );
+        if (libIdx > 0) {
+          setWizardSelectedPath(segs.slice(0, libIdx).join("\\"));
+          return;
+        }
+      }
+      // Fallback: first disk suggestion.
+      if (diskSuggestions && diskSuggestions.length > 0) {
+        setWizardSelectedPath(diskSuggestions[0].path);
+      }
     }
-  }, [needsOnboarding, settings?.library_root, wizardStep]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsOnboarding, wizardStep, detected, diskSuggestions]);
 
   // Auto-advance wizard: import complete → step 3 (verify) auto-trigger.
   useEffect(() => {
@@ -519,8 +501,10 @@ export function HomeTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOnboarding, wizardStep, progress?.phase]);
 
-  const handlePickDisk = async (path: string) => {
-    await update({ library_root: path });
+  const handleConfirmPath = async () => {
+    if (!wizardSelectedPath) return;
+    await update({ library_root: wizardSelectedPath });
+    setWizardStep(1);
   };
 
   const handleBrowseFolder = async () => {
@@ -530,7 +514,7 @@ export function HomeTab() {
       title: "选择安装根目录（建议 30GB 以上可用空间）",
     });
     if (typeof picked === "string") {
-      await update({ library_root: picked });
+      setWizardSelectedPath(picked);
     }
   };
 
@@ -561,6 +545,26 @@ export function HomeTab() {
     }
   };
 
+  const handleWizardImportDir = async () => {
+    if (!settings?.library_root) return;
+    setImportError(null);
+    const picked = await openDialog({
+      directory: true,
+      multiple: false,
+      title: "选择已解压的离线包目录",
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const id = await startOfflineImport(settings.library_root, {
+        type: "directory",
+        path: picked,
+      });
+      beginJob(id, false);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const formatGB = (bytes: number) =>
     `${(bytes / 1024 / 1024 / 1024).toFixed(0)} GB`;
 
@@ -568,7 +572,7 @@ export function HomeTab() {
 
   return (
     <div className="p-6 space-y-5">
-      {needsOnboarding && (
+      {needsOnboarding && !wizardDismissed && (
         <GlassCard className="border-blue-400/40 bg-blue-500/[0.08]">
           {/* Step indicator */}
           <div className="flex items-center gap-2 mb-4">
@@ -609,28 +613,86 @@ export function HomeTab() {
               </div>
               <div className="text-xs text-blue-100/70 leading-relaxed">
                 请选择一个不含中文的目录，需要至少 30GB 可用空间。
-                建议使用 C 盘以外的磁盘。
+                建议使用 C 盘以外的磁盘。游戏会安装在
+                <span className="font-mono mx-1">&lt;目录&gt;/R5R Library/&lt;频道&gt;/</span>
+                下。
               </div>
+
+              {/* Detected R5Reloaded installs */}
+              {detected && detected.filter((d) => d.has_game).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-white/40 uppercase tracking-wider">
+                    已检测到的安装
+                  </div>
+                  {detected
+                    .filter((d) => d.has_game)
+                    .map((d) => {
+                      // Derive library_root from detected path
+                      const segs = d.path.replace(/\\/g, "/").split("/");
+                      const libIdx = segs.findIndex(
+                        (s) => s.toLowerCase() === "r5r library",
+                      );
+                      const root =
+                        libIdx > 0
+                          ? segs.slice(0, libIdx).join("\\")
+                          : d.path;
+                      const isSelected = wizardSelectedPath === root;
+                      return (
+                        <button
+                          key={d.path}
+                          type="button"
+                          onClick={() => setWizardSelectedPath(root)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
+                            isSelected
+                              ? "border-blue-400/60 bg-blue-400/10"
+                              : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40"
+                          }`}
+                        >
+                          <div>
+                            <span className="font-mono text-sm text-white/90">
+                              {root}
+                            </span>
+                            <span className="text-[10px] text-emerald-300 ml-2">
+                              已安装 {d.channel ?? ""}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Disk suggestions */}
               {diskSuggestions === null && (
                 <div className="text-xs text-white/40">正在扫描磁盘…</div>
               )}
               {diskSuggestions && diskSuggestions.length > 0 && (
                 <div className="space-y-1.5">
-                  {diskSuggestions.map((d) => (
-                    <button
-                      key={d.path}
-                      type="button"
-                      onClick={() => handlePickDisk(d.path)}
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40 transition-all text-left"
-                    >
-                      <span className="font-mono text-sm text-white/90">
-                        {d.path}
-                      </span>
-                      <span className="text-xs text-emerald-300 ml-2 shrink-0">
-                        {formatGB(d.free_bytes)} 可用
-                      </span>
-                    </button>
-                  ))}
+                  <div className="text-[11px] text-white/40 uppercase tracking-wider">
+                    可用磁盘
+                  </div>
+                  {diskSuggestions.map((d) => {
+                    const isSelected = wizardSelectedPath === d.path;
+                    return (
+                      <button
+                        key={d.path}
+                        type="button"
+                        onClick={() => setWizardSelectedPath(d.path)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
+                          isSelected
+                            ? "border-blue-400/60 bg-blue-400/10"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40"
+                        }`}
+                      >
+                        <span className="font-mono text-sm text-white/90">
+                          {d.path}
+                        </span>
+                        <span className="text-xs text-emerald-300 ml-2 shrink-0">
+                          {formatGB(d.free_bytes)} 可用
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               {diskSuggestions && diskSuggestions.length === 0 && (
@@ -638,9 +700,29 @@ export function HomeTab() {
                   未找到 30GB 以上可用空间的磁盘，请手动选择。
                 </div>
               )}
-              <PrimaryButton variant="secondary" onClick={handleBrowseFolder}>
-                手动选择目录…
-              </PrimaryButton>
+
+              {/* Selected path preview */}
+              {wizardSelectedPath && (
+                <div className="text-xs text-white/50 font-mono">
+                  安装目录：{wizardSelectedPath}\R5R Library\&lt;频道&gt;\
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <PrimaryButton
+                  variant="primary"
+                  onClick={handleConfirmPath}
+                  disabled={!wizardSelectedPath}
+                >
+                  确认选择
+                </PrimaryButton>
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={handleBrowseFolder}
+                >
+                  手动选择…
+                </PrimaryButton>
+              </div>
             </div>
           )}
 
@@ -651,7 +733,7 @@ export function HomeTab() {
                 下载离线安装包
               </div>
               <div className="text-xs text-blue-100/70 leading-relaxed">
-                游戏完整包约 70GB，建议通过离线包安装（比在线下载更快更稳定）。
+                游戏完整包约 30GB，建议通过离线包安装（比在线下载更快更稳定）。
                 请复制下方链接或在浏览器中打开，下载完成后进入下一步。
               </div>
               {dashboard?.offline_package_url ? (
@@ -694,22 +776,22 @@ export function HomeTab() {
                 </PrimaryButton>
                 <PrimaryButton
                   variant="secondary"
-                  onClick={() => setWizardStep(2)}
+                  onClick={() => setWizardDismissed(true)}
                 >
-                  跳过，稍后下载
+                  跳过
                 </PrimaryButton>
               </div>
             </div>
           )}
 
-          {/* Step 2: Import zip */}
+          {/* Step 2: Import offline package (zip or directory) */}
           {wizardStep === 2 && (
             <div className="space-y-3">
               <div className="text-sm font-semibold text-blue-100">
                 导入离线安装包
               </div>
               <div className="text-xs text-blue-100/70 leading-relaxed">
-                选择已下载的离线包 zip 文件，启动器会自动解压到安装目录。
+                选择已下载的离线包（支持 zip 压缩包或已解压的目录）。
               </div>
               {showingProgress ? (
                 <InstallProgress
@@ -725,6 +807,12 @@ export function HomeTab() {
                     onClick={handleWizardImportZip}
                   >
                     选择离线包 zip
+                  </PrimaryButton>
+                  <PrimaryButton
+                    variant="secondary"
+                    onClick={handleWizardImportDir}
+                  >
+                    选择已解压的目录
                   </PrimaryButton>
                 </div>
               )}
@@ -766,42 +854,12 @@ export function HomeTab() {
       )}
 
       {/* Non-forced update banner — shown at the top, dismissible. */}
-      {launcherUpdate && !launcherUpdate.force && (
-        <GlassCard className="border-blue-400/30">
-          <div className="flex items-center gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">
-                启动器新版本 {launcherUpdate.version} 可用
-              </div>
-              <div className="text-xs text-white/50 mt-0.5">
-                建议更新以获得最新功能和修复。
-              </div>
-              {updateError && (
-                <div className="text-xs text-red-300 mt-1">
-                  更新失败：{updateError}
-                </div>
-              )}
-            </div>
-            <PrimaryButton
-              variant="primary"
-              onClick={handleApplyUpdate}
-              disabled={updating}
-            >
-              {updating ? "更新中…" : "立即更新"}
-            </PrimaryButton>
-            {!updating && (
-              <PrimaryButton
-                variant="secondary"
-                onClick={() => setLauncherUpdate(null)}
-              >
-                稍后
-              </PrimaryButton>
-            )}
-          </div>
-        </GlassCard>
-      )}
 
-      <GlassCard className="relative overflow-hidden min-h-[340px]" padding={false}>
+
+      <GlassCard
+        className="relative overflow-hidden min-h-[340px]"
+        padding={false}
+      >
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 via-transparent to-purple-500/10" />
         <div className="relative p-8 flex flex-col h-full">
           <div className="flex-1">
@@ -813,61 +871,51 @@ export function HomeTab() {
             </div>
 
             {settings?.mirror_domain && (
-              <div className="mt-6 space-y-3">
-                {/* Channel badge */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] uppercase tracking-[0.18em] text-white/40 mr-1">
-                    频道
+              <div className="mt-6 flex items-center gap-2 flex-wrap text-[11px] tabular-nums">
+                {/* Channel pill */}
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-400/40 bg-blue-400/10 text-white font-medium">
+                  {installed ? (
+                    <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
+                  ) : (
+                    <span className="size-1.5 rounded-full border border-white/40" />
+                  )}
+                  <span className="font-mono">
+                    {settings?.selected_channel || "live_game"}
                   </span>
-                  <span className="px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-400/60 bg-blue-400/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] flex items-center gap-2">
-                    {installed ? (
-                      <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
-                    ) : (
-                      <span className="size-1.5 rounded-full border border-white/40" />
-                    )}
-                    <span className="font-mono tracking-wide">
-                      {settings?.selected_channel || "live_game"}
-                    </span>
-                  </span>
-                </div>
+                </span>
 
-                {/* Version readout */}
-                {(installed || remoteVersion || dashboard?.game_version) && (
-                  <div className="flex items-center gap-3 flex-wrap text-[11px] font-mono tabular-nums">
-                    {installed && (
-                      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-400/20">
-                        <span className="text-white/45">本地</span>
-                        {settings.channels[settings.selected_channel]?.version ||
-                          "—"}
-                      </span>
-                    )}
-                    {remoteVersion && (
-                      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.04] text-white/65 border border-white/10">
-                        <span className="text-white/40">远端</span>
-                        {remoteVersion}
-                      </span>
-                    )}
-                    {dashboard?.game_version && (
-                      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-400/20">
-                        <span className="text-white/45">社区服</span>
-                        {dashboard.game_version}
-                      </span>
-                    )}
-                    {installed && updateAvailable && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-400/30">
-                        ↻ 有更新
-                      </span>
-                    )}
-                    {installed && updateAvailable === false && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300/80 border border-emerald-400/20">
-                        ✓ 已是最新
-                      </span>
-                    )}
-                  </div>
+                {/* Version badges — all inline */}
+                {installed && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-400/20 font-mono">
+                    <span className="text-white/45 font-sans">本地</span>
+                    {settings.channels[settings.selected_channel]?.version ||
+                      "—"}
+                  </span>
+                )}
+                {remoteVersion && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-white/65 border border-white/10 font-mono">
+                    <span className="text-white/40 font-sans">远端</span>
+                    {remoteVersion}
+                  </span>
+                )}
+                {dashboard?.game_version && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-500/10 text-blue-300 border border-blue-400/20 font-mono">
+                    <span className="text-white/45 font-sans">社区服</span>
+                    {dashboard.game_version}
+                  </span>
+                )}
+                {installed && updateAvailable && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/15 text-amber-300 border border-amber-400/30">
+                    ↻ 有更新
+                  </span>
+                )}
+                {installed && updateAvailable === false && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300/80 border border-emerald-400/20">
+                    ✓ 已是最新
+                  </span>
                 )}
               </div>
             )}
-
           </div>
 
           {showingProgress ? (
@@ -876,7 +924,9 @@ export function HomeTab() {
                 progress={progress!}
                 logs={installLogs}
                 onCancel={handleCancelImport}
-                onTogglePause={activeJobPausable ? handleTogglePause : undefined}
+                onTogglePause={
+                  activeJobPausable ? handleTogglePause : undefined
+                }
                 paused={jobPaused}
               />
             </div>
@@ -885,7 +935,6 @@ export function HomeTab() {
               <div className="flex items-center gap-3 flex-wrap">
                 <PrimaryButton
                   variant={actionVariant(action)}
-                  size="lg"
                   disabled={action === "blocked"}
                   onClick={handlePrimaryAction}
                 >
@@ -900,7 +949,9 @@ export function HomeTab() {
                 <PrimaryButton
                   variant="secondary"
                   onClick={handleRepair}
-                  disabled={!settings?.selected_channel || !settings?.library_root}
+                  disabled={
+                    !settings?.selected_channel || !settings?.library_root
+                  }
                 >
                   校验
                 </PrimaryButton>
@@ -919,10 +970,14 @@ export function HomeTab() {
                 </div>
               )}
               {launchError && (
-                <div className="text-xs text-red-300">启动失败：{launchError}</div>
+                <div className="text-xs text-red-300">
+                  启动失败：{launchError}
+                </div>
               )}
               {importError && (
-                <div className="text-xs text-red-300">操作失败：{importError}</div>
+                <div className="text-xs text-red-300">
+                  操作失败：{importError}
+                </div>
               )}
             </div>
           )}
@@ -987,6 +1042,14 @@ export function HomeTab() {
                   📦 离线包下载
                 </PrimaryButton>
               )}
+              <PrimaryButton
+                variant="secondary"
+                onClick={() =>
+                  openExternalUrl("https://qm.qq.com/q/cJb0EBg7Dy")
+                }
+              >
+                💬 加入QQ群
+              </PrimaryButton>
             </div>
           </GlassCard>
         )}

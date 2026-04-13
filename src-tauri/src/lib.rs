@@ -125,6 +125,7 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::validate_install_path,
             commands::settings::open_log_folder,
+            commands::settings::open_config_folder,
             commands::settings::open_external_url,
             commands::settings::suggest_install_path,
             commands::accelerator::detect_accelerators_cmd,

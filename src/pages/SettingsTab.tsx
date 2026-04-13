@@ -9,7 +9,7 @@ import {
   UpdateStrategy,
 } from "../ipc/types";
 import { setProxyMode, testProxy } from "../ipc/proxy";
-import { validateInstallPath, openLogFolder } from "../ipc/settings";
+import { validateInstallPath, openLogFolder, openConfigFolder } from "../ipc/settings";
 import { detectExistingR5R } from "../ipc/detect";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -281,6 +281,9 @@ export function SettingsTab() {
   const handleReset = async () => {
     setBusy("reset");
     setSaveError(null);
+    // Mark as un-hydrated so the autosave effect doesn't fire with stale
+    // local state before the hydration effect re-runs with fresh settings.
+    hydrated.current = false;
     try {
       await reload();
       setSavedAt(null);
@@ -493,6 +496,9 @@ export function SettingsTab() {
         <div className="flex gap-2">
           <PrimaryButton variant="secondary" onClick={() => openLogFolder()}>
             打开日志目录
+          </PrimaryButton>
+          <PrimaryButton variant="secondary" onClick={() => openConfigFolder()}>
+            打开配置目录
           </PrimaryButton>
         </div>
       </GlassCard>

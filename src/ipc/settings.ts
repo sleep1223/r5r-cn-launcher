@@ -11,6 +11,8 @@ export const validateInstallPath = (path: string) =>
 
 export const openLogFolder = () => invoke<void>("open_log_folder");
 
+export const openConfigFolder = () => invoke<void>("open_config_folder");
+
 export const openExternalUrl = (url: string) =>
   invoke<void>("open_external_url", { url });
 

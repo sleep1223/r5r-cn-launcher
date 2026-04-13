@@ -190,7 +190,7 @@ export function LaunchOptionsTab() {
       {/* LEFT: categorized list */}
       <div className="overflow-y-auto pr-2 space-y-5">
         {grouped.map(({ cat, entries }) => (
-          <GlassCard key={cat.id}>
+          <GlassCard key={cat.id} className="!shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <SectionHeader title={cat.label_zh} />
             <div className="space-y-2">
               {entries.map((entry) => (
