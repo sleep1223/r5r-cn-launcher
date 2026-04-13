@@ -10,6 +10,13 @@ async function get<T>(path: string, headers?: Record<string, string>): Promise<T
   return json?.data ?? json;
 }
 
+/** Like get() but returns the full envelope (for endpoints where summary/total sit alongside data). */
+async function getFull<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, { headers });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
 async function post<T>(path: string, headers?: Record<string, string>): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { method: "POST", headers });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -148,7 +155,7 @@ export const getPlayerVsAll = (
   name: string,
   p?: { page_no?: number; page_size?: number; sort?: string },
 ) =>
-  get<{ data: PlayerVsAllRecord[]; summary?: PlayerVsAllSummary; total?: number }>(
+  getFull<{ data: PlayerVsAllRecord[]; summary?: PlayerVsAllSummary; total?: number }>(
     `/v1/r5/players/${encodeURIComponent(name)}/vs_all${qs({ ...p })}`,
   );
 
@@ -161,7 +168,7 @@ export const getUserMe = (appKey: string) =>
   get<UserInfo>("/v1/r5/user/me", { "X-App-Key": appKey });
 
 export const getTeams = (p?: { page_no?: number; page_size?: number }) =>
-  get<{ data: Team[]; total?: number }>(`/v1/r5/teams${qs({ ...p })}`);
+  getFull<{ data: Team[]; total?: number }>(`/v1/r5/teams${qs({ ...p })}`);
 
 export const createTeam = (appKey: string, slotsNeeded: number) =>
   post<Team>(`/v1/r5/teams/app/create?slots_needed=${slotsNeeded}`, {

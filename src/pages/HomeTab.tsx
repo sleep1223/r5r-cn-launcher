@@ -63,7 +63,9 @@ export function HomeTab({ onUpdateDetected }: Props) {
   // Onboarding wizard state
   const [wizardStep, setWizardStep] = useState(0); // 0=dir, 1=download, 2=import, 3=verify
   const [wizardDismissed, setWizardDismissed] = useState(false);
-  const [wizardSelectedPath, setWizardSelectedPath] = useState<string | null>(null);
+  const [wizardSelectedPath, setWizardSelectedPath] = useState<string | null>(
+    null,
+  );
   const [diskSuggestions, setDiskSuggestions] = useState<
     DiskSuggestion[] | null
   >(null);
@@ -154,14 +156,24 @@ export function HomeTab({ onUpdateDetected }: Props) {
       try {
         const data = await getServers();
         if (cancelled) return;
-        const players = data.reduce((s: number, sv: ServerListItem) => s + sv.player_count, 0);
-        const regions = new Set(data.map((s: ServerListItem) => s.region).filter(Boolean)).size;
+        const players = data.reduce(
+          (s: number, sv: ServerListItem) => s + sv.player_count,
+          0,
+        );
+        const regions = new Set(
+          data.map((s: ServerListItem) => s.region).filter(Boolean),
+        ).size;
         setServerStats({ servers: data.length, players, regions });
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
     };
     load();
     const t = setInterval(load, 30_000);
-    return () => { cancelled = true; clearInterval(t); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, []);
 
   // Check for launcher self-update once the dashboard data arrives.
@@ -466,8 +478,6 @@ export function HomeTab({ onUpdateDetected }: Props) {
     }
   };
 
-
-
   // The onboarding wizard shows when: auto-adopt is done, no detected
   // launchable install, and the game is not installed via our launcher.
   const needsOnboarding =
@@ -641,7 +651,8 @@ export function HomeTab({ onUpdateDetected }: Props) {
                 选择游戏安装目录
               </div>
               <div className="text-xs text-blue-100/70 leading-relaxed">
-                请选择安装路径，需要至少 30GB 可用空间。建议使用 C 盘以外的磁盘。
+                请选择安装路径，需要至少 30GB 可用空间。建议使用 C
+                盘以外的磁盘。
               </div>
 
               {diskSuggestions === null && (
@@ -658,20 +669,26 @@ export function HomeTab({ onUpdateDetected }: Props) {
                     .filter((d) => {
                       // Don't show a disk row if it duplicates the detected root
                       if (!detectedRoot) return true;
-                      const diskRoot = d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
-                      return diskRoot.toLowerCase() !== detectedRoot.toLowerCase();
+                      const diskRoot =
+                        d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
+                      return (
+                        diskRoot.toLowerCase() !== detectedRoot.toLowerCase()
+                      );
                     })
                     .map((d) => {
                       const MIN = 30 * 1024 * 1024 * 1024;
                       const enough = d.free_bytes >= MIN;
-                      const fullPath = d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
+                      const fullPath =
+                        d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
                       const isSelected = wizardSelectedPath === fullPath;
                       return (
                         <button
                           key={d.path}
                           type="button"
                           disabled={!enough}
-                          onClick={() => enough && setWizardSelectedPath(fullPath)}
+                          onClick={() =>
+                            enough && setWizardSelectedPath(fullPath)
+                          }
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
                             !enough
                               ? "border-white/5 bg-white/[0.01] opacity-50 cursor-not-allowed"
@@ -724,10 +741,7 @@ export function HomeTab({ onUpdateDetected }: Props) {
                 >
                   确认选择
                 </PrimaryButton>
-                <PrimaryButton
-                  variant="secondary"
-                  onClick={handleBrowseFolder}
-                >
+                <PrimaryButton variant="secondary" onClick={handleBrowseFolder}>
                   手动选择…
                 </PrimaryButton>
               </div>
@@ -863,7 +877,6 @@ export function HomeTab({ onUpdateDetected }: Props) {
 
       {/* Non-forced update banner — shown at the top, dismissible. */}
 
-
       <GlassCard
         className="relative overflow-hidden min-h-[340px]"
         padding={false}
@@ -878,7 +891,8 @@ export function HomeTab({ onUpdateDetected }: Props) {
               社区服专用 · 镜像加速 · 一键启动
               {serverStats && (
                 <span className="ml-3 text-white/50">
-                  {serverStats.servers} 服务器 · {serverStats.players} 在线 · {serverStats.regions} 地区
+                  {serverStats.servers} 服务器 · {serverStats.players} 在线玩家
+                  · {serverStats.regions} 地区
                 </span>
               )}
             </div>

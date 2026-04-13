@@ -39,6 +39,42 @@ export const mapName = (map?: string | null): string => {
   }
 };
 
+const WEAPON_ZH: Record<string, string> = {
+  alternator: "转换者冲锋枪",
+  "charge rifle": "充能步枪",
+  devotion: "专注冲锋枪",
+  epg: "EPG",
+  eva8: "EVA8",
+  flatline: "平行步枪",
+  g7: "G7侦察枪",
+  havoc: "哈沃克步枪",
+  hemlok: "赫姆洛克突击步枪",
+  kraber: "克雷贝尔狙击枪",
+  longbow: "长弓狙击步枪",
+  lstar: "L-STAR能量机枪",
+  mastiff: "敖犬霰弹枪",
+  mozambique: "莫桑比克",
+  p2020: "P2020",
+  peacekeeper: "和平捍卫者",
+  prowler: "猎兽冲锋枪",
+  r301: "R301步枪",
+  r99: "R99冲锋枪",
+  re45: "RE45手枪",
+  "smart pistol": "智慧手枪",
+  spitfire: "喷火轻机枪",
+  "triple take": "三重式狙击枪",
+  wingman: "辅助手枪",
+  volt: "电能冲锋枪",
+  crossbow_bolt: "波塞克弓",
+  trigger_hurt: "致命区域",
+  player: "近战",
+};
+
+export const weaponName = (weapon?: string | null): string => {
+  if (!weapon) return "";
+  return WEAPON_ZH[weapon.toLowerCase()] ?? weapon;
+};
+
 export const countryName = (code?: string | null): string => {
   if (!code) return "";
   try {

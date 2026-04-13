@@ -6,6 +6,7 @@ import {
   KdRecord,
   WeaponLeaderboardRecord,
 } from "../api";
+import { weaponName } from "../utils/maps";
 
 type TimeRange = "today" | "yesterday" | "week" | "month" | "all";
 type Board = "kills" | "weapons";
@@ -167,7 +168,7 @@ export function LeaderboardTab() {
                     <td className="py-2 px-2">
                       <RankBadge rank={i + 1} />
                     </td>
-                    <td className="py-2 px-2 text-white/70">{r.weapon}</td>
+                    <td className="py-2 px-2 text-white/70">{weaponName(r.weapon)}</td>
                     <td className="py-2 px-2 font-mono text-white/90">
                       {r.name}
                     </td>

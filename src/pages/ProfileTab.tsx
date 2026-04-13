@@ -8,6 +8,7 @@ import {
   PlayerVsAllSummary,
   WeaponRecord,
 } from "../api";
+import { weaponName } from "../utils/maps";
 
 export function ProfileTab() {
   const { user } = useAuth();
@@ -153,7 +154,7 @@ export function ProfileTab() {
                     className="border-b border-white/[0.03] hover:bg-white/[0.03]"
                   >
                     <td className="py-1.5 px-2 text-xs text-white/80">
-                      {r.weapon}
+                      {weaponName(r.weapon)}
                     </td>
                     <td className="py-1.5 px-2 text-right text-emerald-300 tabular-nums text-xs">
                       {r.kills}
