@@ -1,5 +1,5 @@
-use crate::config::fetch::fetch_channel_version;
 use crate::config::Channel;
+use crate::manifest::fetch_manifest;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
 use crate::events::{new_job_id, InstallJobId};
@@ -167,7 +167,8 @@ pub async fn check_update(
     let domain = state.settings.read().mirror_domain.clone();
     let ch = Channel::from_domain(&domain, &channel);
     let client = state.http.read().await.client();
-    let remote_version = fetch_channel_version(&client, &ch).await?;
+    let manifest = fetch_manifest(&client, &ch).await?;
+    let remote_version = manifest.game_version;
     let local_version = state
         .settings
         .read()

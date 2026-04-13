@@ -1,3 +1,4 @@
+use crate::config::paths::LIBRARY_DIR_NAME;
 use crate::detect::{detect_existing, DetectedInstall};
 use crate::error::AppResult;
 use crate::state::LauncherState;
@@ -33,98 +34,128 @@ pub async fn detect_existing_r5r(
     Ok(found)
 }
 
-// ===== Auto-adopt existing install =====
+// ===== Auto-adopt existing R5Reloaded install =====
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AdoptResult {
-    /// Whether an existing LIVE install was found and adopted.
     pub adopted: bool,
-    /// The path that was adopted (if any).
     pub channel_dir: Option<String>,
-    /// The library root that was written to settings (parent of LIVE/).
     pub library_root: Option<String>,
-    /// Version string from the official launcher settings, if any.
-    pub game_version: Option<String>,
-    /// True if the LIVE channel was already marked installed in our settings.
-    pub was_already_adopted: bool,
 }
 
-/// Read the official R5Valkyrie launcher's `settings.json` to find an existing
-/// LIVE install. If found AND we don't already have LIVE marked as installed,
-/// write `library_root` + channel state into our own settings so the user can
-/// immediately hit "校验" without manual path selection.
+/// Detect an existing R5Reloaded install (via registry / shortcut / library
+/// scan) and, if found, write `library_root` + channel state into our settings
+/// so the user can immediately hit "校验" without manual path selection.
 ///
-/// Returns an `AdoptResult` the frontend can use to decide whether to auto-
-/// trigger verification.
+/// The official R5Reloaded launcher uses the same `R5R Library/<CHANNEL>/`
+/// directory structure as us, so we derive `library_root` by walking up from
+/// the detected path past the `R5R Library` segment.
 #[tauri::command]
-pub fn auto_adopt_existing_install(
+pub async fn auto_adopt_existing_install(
     state: State<'_, LauncherState>,
 ) -> AppResult<AdoptResult> {
-    // Already have LIVE installed? Skip — don't overwrite the user's state.
+    // Skip if we already have any channel marked installed.
     {
         let s = state.settings.read();
-        if s.channels.get("LIVE").map(|c| c.installed).unwrap_or(false) {
+        if s.channels.values().any(|c| c.installed) {
             return Ok(AdoptResult {
                 adopted: false,
                 channel_dir: None,
                 library_root: None,
-                game_version: None,
-                was_already_adopted: true,
             });
         }
     }
 
-    #[cfg(windows)]
-    {
-        use crate::detect::official_settings::read_official_live_install;
-        let Some(official) = read_official_live_install() else {
+    let extra = {
+        let s = state.settings.read();
+        let mut v = Vec::new();
+        if !s.library_root.is_empty() {
+            v.push(s.library_root.clone());
+        }
+        v
+    };
+    let found = detect_existing(&extra).await;
+
+    // Pick the first detected install that actually has the game executable.
+    let hit = match found.into_iter().find(|d| d.has_game) {
+        Some(h) => h,
+        None => {
             return Ok(AdoptResult {
                 adopted: false,
                 channel_dir: None,
                 library_root: None,
-                game_version: None,
-                was_already_adopted: false,
             });
-        };
-
-        // Write into our settings: library_root + LIVE channel state.
-        {
-            let mut s = state.settings.write();
-            s.library_root = official.library_root.display().to_string();
-            if s.selected_channel.is_empty() {
-                s.selected_channel = "LIVE".to_string();
-            }
-            let ch = s.channels.entry("LIVE".to_string()).or_default();
-            ch.installed = true;
-            if let Some(ver) = &official.game_version {
-                ch.version = ver.clone();
-            }
         }
-        let _ = state.save_settings();
+    };
 
-        tracing::info!(
-            target: "detect",
-            "auto-adopted official LIVE install at {}",
-            official.channel_dir.display()
-        );
+    // Derive library_root from the detected path. The R5Reloaded structure is
+    // `<library_root>/R5R Library/<CHANNEL>/`, so we walk up looking for the
+    // `R5R Library` segment.
+    let channel_dir = std::path::PathBuf::from(&hit.path);
+    let (library_root, channel_name) = match derive_library_root(&channel_dir) {
+        Some(pair) => pair,
+        None => {
+            tracing::debug!(
+                target: "detect",
+                "cannot derive library_root from {}",
+                hit.path
+            );
+            return Ok(AdoptResult {
+                adopted: false,
+                channel_dir: None,
+                library_root: None,
+            });
+        }
+    };
 
-        Ok(AdoptResult {
-            adopted: true,
-            channel_dir: Some(official.channel_dir.display().to_string()),
-            library_root: Some(official.library_root.display().to_string()),
-            game_version: official.game_version,
-            was_already_adopted: false,
-        })
-    }
-
-    #[cfg(not(windows))]
+    // Write into our settings.
     {
-        Ok(AdoptResult {
-            adopted: false,
-            channel_dir: None,
-            library_root: None,
-            game_version: None,
-            was_already_adopted: false,
-        })
+        let mut s = state.settings.write();
+        s.library_root = library_root.display().to_string();
+        if s.selected_channel.is_empty() {
+            s.selected_channel = channel_name.clone();
+        }
+        let ch = s.channels.entry(channel_name.clone()).or_default();
+        ch.installed = true;
     }
+    let _ = state.save_settings();
+
+    tracing::info!(
+        target: "detect",
+        "auto-adopted R5Reloaded install: channel={}, dir={}",
+        channel_name,
+        channel_dir.display()
+    );
+
+    Ok(AdoptResult {
+        adopted: true,
+        channel_dir: Some(channel_dir.display().to_string()),
+        library_root: Some(library_root.display().to_string()),
+    })
+}
+
+/// Given a path like `D:\Games\R5R Library\LIVE`, return
+/// `(D:\Games, "LIVE")`. Returns `None` if the path doesn't contain
+/// the `R5R Library` segment.
+fn derive_library_root(
+    channel_dir: &std::path::Path,
+) -> Option<(std::path::PathBuf, String)> {
+    let components: Vec<_> = channel_dir
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+    // Find the "R5R Library" segment (case-insensitive).
+    for i in (0..components.len()).rev() {
+        if components[i].eq_ignore_ascii_case(LIBRARY_DIR_NAME) {
+            // The channel name is the segment after "R5R Library".
+            let channel = components.get(i + 1)?.to_string();
+            // library_root is everything before "R5R Library".
+            let root: std::path::PathBuf = components[..i].iter().collect();
+            if root.as_os_str().is_empty() {
+                return None;
+            }
+            return Some((root, channel));
+        }
+    }
+    None
 }

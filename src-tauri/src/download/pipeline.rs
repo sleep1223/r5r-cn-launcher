@@ -1,4 +1,3 @@
-use crate::config::fetch::fetch_channel_version;
 use crate::config::{Channel, UpdateStrategy};
 use crate::download::chunk::download_chunked;
 use crate::download::progress::ProgressAggregator;
@@ -117,7 +116,7 @@ pub async fn run_install(
     // 2. Resolve install dir.
     let install_dir = PathBuf::from(&library_root)
         .join("R5R Library")
-        .join(channel.name.to_uppercase());
+        .join(channel_name.to_uppercase());
     tokio::fs::create_dir_all(&install_dir).await?;
     emit_log(
         &app,
@@ -126,19 +125,35 @@ pub async fn run_install(
         format!("安装目录: {}", install_dir.display()),
     );
 
-    // 3. Version check (Update mode only).
-    let remote_version = tokio::select! {
+    // 3. Fetch manifest (version comes from checksums.json's game_version).
+    emit(InstallPhase::FetchingManifest);
+    emit_log(&app, &job_id, LogLevel::Info, "拉取游戏 checksums.json …");
+    let manifest = tokio::select! {
         biased;
         _ = cancel.cancelled() => {
             emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
             emit(InstallPhase::Cancelled);
             return Err(AppError::Cancelled);
         }
-        r = fetch_channel_version(&client, &channel) => r.ok(),
+        r = fetch_manifest(&client, &channel) => r?,
     };
-    if let Some(rv) = &remote_version {
-        emit_log(&app, &job_id, LogLevel::Info, format!("远端版本: {}", rv));
-    }
+    let remote_version = if manifest.game_version.is_empty() {
+        None
+    } else {
+        Some(manifest.game_version.clone())
+    };
+    emit_log(
+        &app,
+        &job_id,
+        LogLevel::Info,
+        format!(
+            "manifest 共 {} 个文件，版本: {}",
+            manifest.files.len(),
+            remote_version.as_deref().unwrap_or("未知")
+        ),
+    );
+
+    // 4. Version check (Update mode only).
     if mode == InstallMode::Update {
         let local_version = state
             .settings
@@ -155,25 +170,6 @@ pub async fn run_install(
             }
         }
     }
-
-    // 4. Fetch manifest.
-    emit(InstallPhase::FetchingManifest);
-    emit_log(&app, &job_id, LogLevel::Info, "拉取游戏 checksums.json …");
-    let manifest = tokio::select! {
-        biased;
-        _ = cancel.cancelled() => {
-            emit_log(&app, &job_id, LogLevel::Warn, "用户取消安装");
-            emit(InstallPhase::Cancelled);
-            return Err(AppError::Cancelled);
-        }
-        r = fetch_manifest(&client, &channel) => r?,
-    };
-    emit_log(
-        &app,
-        &job_id,
-        LogLevel::Info,
-        format!("manifest 共 {} 个文件", manifest.files.len()),
-    );
 
     // 5. Build the download plan.
     //
