@@ -123,16 +123,15 @@ pub fn open_external_url(app: AppHandle, url: String) -> AppResult<()> {
 
 // ===== Disk suggestions =====
 
-const MIN_FREE_BYTES: u64 = 30 * 1024 * 1024 * 1024; // 30 GB
-
 #[derive(Debug, Clone, Serialize)]
 pub struct DiskSuggestion {
     pub path: String,
     pub free_bytes: u64,
 }
 
-/// Return a list of suitable install locations sorted by preference:
-/// non-C drives first (by free space desc), then C drive last.
+/// Return all disks sorted by preference: non-C drives first (by free
+/// space desc), C drive last. Includes disks with low free space — the
+/// frontend marks them as disabled.
 #[tauri::command]
 pub fn suggest_install_path() -> Vec<DiskSuggestion> {
     let disks = Disks::new_with_refreshed_list();
@@ -141,9 +140,6 @@ pub fn suggest_install_path() -> Vec<DiskSuggestion> {
     for disk in disks.list() {
         let mount = disk.mount_point();
         let free = disk.available_space();
-        if free < MIN_FREE_BYTES {
-            continue;
-        }
         let path_str = mount.display().to_string();
         // Skip pseudo-filesystems (Linux /boot, /snap, etc.)
         if cfg!(target_os = "linux")

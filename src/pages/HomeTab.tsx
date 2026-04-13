@@ -481,30 +481,29 @@ export function HomeTab({ onUpdateDetected }: Props) {
       .catch(() => setDiskSuggestions([]));
   }, [needsOnboarding]);
 
-  // Pre-select the first detected install path if available.
+  // Derive the detected install's library_root (if any).
+  const detectedRoot = (() => {
+    const d = detected?.find((d) => d.has_game);
+    if (!d) return null;
+    const segs = d.path.replace(/\\/g, "/").split("/");
+    const libIdx = segs.findIndex((s) => s.toLowerCase() === "r5r library");
+    return libIdx > 0 ? segs.slice(0, libIdx).join("\\") : null;
+  })();
+
+  // Pre-select: prefer detected install, else first disk with enough space.
   useEffect(() => {
     if (needsOnboarding && wizardStep === 0 && !wizardSelectedPath) {
-      // Prefer a detected R5Reloaded install path (derive library_root).
-      const detectedWithGame = detected?.find((d) => d.has_game);
-      if (detectedWithGame) {
-        // Walk up from e.g. "D:\...\R5R Library\LIVE" to get the root
-        // above "R5R Library".
-        const segs = detectedWithGame.path.replace(/\\/g, "/").split("/");
-        const libIdx = segs.findIndex(
-          (s) => s.toLowerCase() === "r5r library",
+      if (detectedRoot) {
+        setWizardSelectedPath(detectedRoot);
+      } else if (diskSuggestions && diskSuggestions.length > 0) {
+        const ok = diskSuggestions.find(
+          (d) => d.free_bytes >= 30 * 1024 * 1024 * 1024,
         );
-        if (libIdx > 0) {
-          setWizardSelectedPath(segs.slice(0, libIdx).join("\\"));
-          return;
-        }
-      }
-      // Fallback: first disk suggestion.
-      if (diskSuggestions && diskSuggestions.length > 0) {
-        setWizardSelectedPath(diskSuggestions[0].path);
+        if (ok) setWizardSelectedPath(ok.path + "R5Reloaded");
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsOnboarding, wizardStep, detected, diskSuggestions]);
+  }, [needsOnboarding, wizardStep, detectedRoot, diskSuggestions]);
 
   // Auto-advance wizard: import complete → step 3 (verify) auto-trigger.
   useEffect(() => {
@@ -635,99 +634,78 @@ export function HomeTab({ onUpdateDetected }: Props) {
                 选择游戏安装目录
               </div>
               <div className="text-xs text-blue-100/70 leading-relaxed">
-                请选择一个不含中文的目录，需要至少 30GB 可用空间。
-                建议使用 C 盘以外的磁盘。游戏会安装在
-                <span className="font-mono mx-1">&lt;目录&gt;/R5R Library/&lt;频道&gt;/</span>
-                下。
+                请选择安装路径，需要至少 30GB 可用空间。建议使用 C 盘以外的磁盘。
               </div>
 
-              {/* Detected R5Reloaded installs */}
-              {detected && detected.filter((d) => d.has_game).length > 0 && (
+              {diskSuggestions === null && (
+                <div className="text-xs text-white/40">正在扫描磁盘…</div>
+              )}
+
+              {diskSuggestions && (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-white/40 uppercase tracking-wider">
-                    已检测到的安装
+                    可用安装路径
                   </div>
-                  {detected
-                    .filter((d) => d.has_game)
+                  {/* Disk-based paths (exclude detected root to avoid duplication) */}
+                  {diskSuggestions
+                    .filter((d) => {
+                      // Don't show a disk row if it duplicates the detected root
+                      if (!detectedRoot) return true;
+                      const diskRoot = d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
+                      return diskRoot.toLowerCase() !== detectedRoot.toLowerCase();
+                    })
                     .map((d) => {
-                      // Derive library_root from detected path
-                      const segs = d.path.replace(/\\/g, "/").split("/");
-                      const libIdx = segs.findIndex(
-                        (s) => s.toLowerCase() === "r5r library",
-                      );
-                      const root =
-                        libIdx > 0
-                          ? segs.slice(0, libIdx).join("\\")
-                          : d.path;
-                      const isSelected = wizardSelectedPath === root;
+                      const MIN = 30 * 1024 * 1024 * 1024;
+                      const enough = d.free_bytes >= MIN;
+                      const fullPath = d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
+                      const isSelected = wizardSelectedPath === fullPath;
                       return (
                         <button
                           key={d.path}
                           type="button"
-                          onClick={() => setWizardSelectedPath(root)}
+                          disabled={!enough}
+                          onClick={() => enough && setWizardSelectedPath(fullPath)}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
-                            isSelected
-                              ? "border-blue-400/60 bg-blue-400/10"
-                              : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40"
+                            !enough
+                              ? "border-white/5 bg-white/[0.01] opacity-50 cursor-not-allowed"
+                              : isSelected
+                                ? "border-blue-400/60 bg-blue-400/10"
+                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40"
                           }`}
                         >
-                          <div>
-                            <span className="font-mono text-sm text-white/90">
-                              {root}
-                            </span>
-                            <span className="text-[10px] text-emerald-300 ml-2">
-                              已安装 {d.channel ?? ""}
-                            </span>
-                          </div>
+                          <span className="font-mono text-xs text-white/80">
+                            {fullPath}\R5R Library\&lt;频道&gt;\
+                          </span>
+                          <span
+                            className={`text-xs ml-2 shrink-0 ${enough ? "text-emerald-300" : "text-red-300"}`}
+                          >
+                            {formatGB(d.free_bytes)} 可用
+                          </span>
                         </button>
                       );
                     })}
-                </div>
-              )}
 
-              {/* Disk suggestions */}
-              {diskSuggestions === null && (
-                <div className="text-xs text-white/40">正在扫描磁盘…</div>
-              )}
-              {diskSuggestions && diskSuggestions.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="text-[11px] text-white/40 uppercase tracking-wider">
-                    可用磁盘
-                  </div>
-                  {diskSuggestions.map((d) => {
-                    const isSelected = wizardSelectedPath === d.path;
-                    return (
-                      <button
-                        key={d.path}
-                        type="button"
-                        onClick={() => setWizardSelectedPath(d.path)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
-                          isSelected
-                            ? "border-blue-400/60 bg-blue-400/10"
-                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-blue-400/40"
-                        }`}
-                      >
-                        <span className="font-mono text-sm text-white/90">
-                          {d.path}
+                  {/* Detected R5Reloaded install (shown last, pre-selected) */}
+                  {detectedRoot && (
+                    <button
+                      type="button"
+                      onClick={() => setWizardSelectedPath(detectedRoot)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
+                        wizardSelectedPath === detectedRoot
+                          ? "border-emerald-400/60 bg-emerald-400/10"
+                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-emerald-400/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-white/80">
+                          {detectedRoot}\R5R Library\&lt;频道&gt;\
                         </span>
-                        <span className="text-xs text-emerald-300 ml-2 shrink-0">
-                          {formatGB(d.free_bytes)} 可用
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 shrink-0">
+                          已安装
                         </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {diskSuggestions && diskSuggestions.length === 0 && (
-                <div className="text-xs text-amber-300">
-                  未找到 30GB 以上可用空间的磁盘，请手动选择。
-                </div>
-              )}
-
-              {/* Selected path preview */}
-              {wizardSelectedPath && (
-                <div className="text-xs text-white/50 font-mono">
-                  安装目录：{wizardSelectedPath}\R5R Library\&lt;频道&gt;\
+                      </div>
+                    </button>
+                  )}
                 </div>
               )}
 
