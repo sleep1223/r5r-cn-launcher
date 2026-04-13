@@ -114,22 +114,31 @@ pub async fn download_installer(
     Ok(dest)
 }
 
-/// Run the downloaded NSIS installer silently, then exit the current process.
-///
-/// The NSIS `/S` flag performs a silent install. The installer will close
-/// the running app (via `nsProcess`), replace the files, and optionally
-/// relaunch. We give it a short head start then `std::process::exit(0)`.
+/// Run the downloaded NSIS installer silently, wait for it to finish,
+/// relaunch the newly installed exe, then exit the current process.
 #[cfg(windows)]
 pub fn run_installer_and_exit(path: &std::path::Path) -> AppResult<()> {
     use std::process::Command;
+
+    // Resolve the current exe path BEFORE the installer overwrites it —
+    // the path stays the same, only the binary on disk changes.
+    let current_exe = std::env::current_exe()
+        .map_err(|e| AppError::other(format!("无法获取当前 exe 路径: {}", e)))?;
+
     tracing::info!(target: "updater", "launching silent installer: {}", path.display());
-    Command::new(path)
+    let status = Command::new(path)
         .arg("/S") // NSIS silent install
-        .arg("--launch-on-exit") // relaunch app after install completes
-        .spawn()
+        .status() // wait for installer to finish (unlike spawn)
         .map_err(|e| AppError::other(format!("启动安装程序失败: {}", e)))?;
-    // Give the installer a moment to start before we exit.
-    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    tracing::info!(target: "updater", "installer exited with {:?}", status.code());
+
+    // Relaunch the (now-updated) exe.
+    tracing::info!(target: "updater", "relaunching {}", current_exe.display());
+    Command::new(&current_exe)
+        .spawn()
+        .map_err(|e| AppError::other(format!("重启失败: {}", e)))?;
+
     std::process::exit(0);
 }
 

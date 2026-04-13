@@ -511,12 +511,15 @@ export function HomeTab({ onUpdateDetected }: Props) {
   useEffect(() => {
     if (needsOnboarding && wizardStep === 0 && !wizardSelectedPath) {
       if (detectedRoot) {
-        setWizardSelectedPath(detectedRoot);
+        setWizardSelectedPath(detectedRoot.replace(/\\/g, "/").replace(/\/+$/, ""));
       } else if (diskSuggestions && diskSuggestions.length > 0) {
         const ok = diskSuggestions.find(
           (d) => d.free_bytes >= 30 * 1024 * 1024 * 1024,
         );
-        if (ok) setWizardSelectedPath(ok.path + "R5Reloaded");
+        if (ok) {
+          const p = ok.path.replace(/[\\/]+$/, "").replace(/\\/g, "/");
+          setWizardSelectedPath(p + "/R5Reloaded");
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -607,6 +610,9 @@ export function HomeTab({ onUpdateDetected }: Props) {
   const formatGB = (bytes: number) =>
     `${(bytes / 1024 / 1024 / 1024).toFixed(0)} GB`;
 
+  /** Normalize path separators to forward slashes and strip trailing slash. */
+  const fwd = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+
   const STEP_LABELS = ["选择目录", "下载离线包", "导入安装", "校验文件"];
 
   return (
@@ -664,31 +670,23 @@ export function HomeTab({ onUpdateDetected }: Props) {
                   <div className="text-[11px] text-white/40 uppercase tracking-wider">
                     可用安装路径
                   </div>
-                  {/* Disk-based paths (exclude detected root to avoid duplication) */}
                   {diskSuggestions
                     .filter((d) => {
-                      // Don't show a disk row if it duplicates the detected root
                       if (!detectedRoot) return true;
-                      const diskRoot =
-                        d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
-                      return (
-                        diskRoot.toLowerCase() !== detectedRoot.toLowerCase()
-                      );
+                      const diskRoot = fwd(d.path.replace(/[\\/]+$/, "") + "/R5Reloaded");
+                      return diskRoot.toLowerCase() !== fwd(detectedRoot).toLowerCase();
                     })
                     .map((d) => {
                       const MIN = 30 * 1024 * 1024 * 1024;
                       const enough = d.free_bytes >= MIN;
-                      const fullPath =
-                        d.path.replace(/[\\/]+$/, "") + "\\R5Reloaded";
-                      const isSelected = wizardSelectedPath === fullPath;
+                      const rootPath = fwd(d.path.replace(/[\\/]+$/, "") + "/R5Reloaded");
+                      const isSelected = wizardSelectedPath === rootPath;
                       return (
                         <button
                           key={d.path}
                           type="button"
                           disabled={!enough}
-                          onClick={() =>
-                            enough && setWizardSelectedPath(fullPath)
-                          }
+                          onClick={() => enough && setWizardSelectedPath(rootPath)}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
                             !enough
                               ? "border-white/5 bg-white/[0.01] opacity-50 cursor-not-allowed"
@@ -698,7 +696,7 @@ export function HomeTab({ onUpdateDetected }: Props) {
                           }`}
                         >
                           <span className="font-mono text-xs text-white/80">
-                            {fullPath}\R5R Library\&lt;频道&gt;\
+                            {rootPath}
                           </span>
                           <span
                             className={`text-xs ml-2 shrink-0 ${enough ? "text-emerald-300" : "text-red-300"}`}
@@ -713,16 +711,16 @@ export function HomeTab({ onUpdateDetected }: Props) {
                   {detectedRoot && (
                     <button
                       type="button"
-                      onClick={() => setWizardSelectedPath(detectedRoot)}
+                      onClick={() => setWizardSelectedPath(fwd(detectedRoot))}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
-                        wizardSelectedPath === detectedRoot
+                        wizardSelectedPath === fwd(detectedRoot)
                           ? "border-emerald-400/60 bg-emerald-400/10"
                           : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-emerald-400/40"
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-white/80">
-                          {detectedRoot}\R5R Library\&lt;频道&gt;\
+                          {fwd(detectedRoot)}
                         </span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 shrink-0">
                           已安装
@@ -730,6 +728,16 @@ export function HomeTab({ onUpdateDetected }: Props) {
                       </div>
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Install dir preview */}
+              {wizardSelectedPath && (
+                <div className="text-xs text-white/50">
+                  实际安装目录：
+                  <span className="font-mono text-white/70">
+                    {fwd(wizardSelectedPath)}/R5R Library/&lt;频道&gt;/
+                  </span>
                 </div>
               )}
 

@@ -24,14 +24,11 @@ function detectedToLibraryRoot(detectedPath: string): string {
   const segs = detectedPath.split(/[\\/]/);
   for (let i = segs.length - 1; i > 0; i--) {
     if (segs[i].toLowerCase() === "r5r library") {
-      const parent = segs.slice(0, i).join("\\");
-      // `C:` alone means "current dir on C drive"; we want the actual root.
-      return /^[a-z]:$/i.test(parent) ? parent + "\\" : parent;
+      const parent = segs.slice(0, i).join("/");
+      return /^[a-z]:$/i.test(parent) ? parent + "/" : parent;
     }
   }
-  // Detected path doesn't include `R5R Library` (e.g. shortcut points
-  // somewhere odd) — fall back to using it directly.
-  return detectedPath;
+  return detectedPath.replace(/\\/g, "/");
 }
 
 interface DetectedRoot {
@@ -86,7 +83,7 @@ export function SettingsTab() {
     );
     setMirrorDomain(settings.mirror_domain);
     setUpdateStrategy(settings.update_strategy);
-    setLibraryRoot(settings.library_root);
+    setLibraryRoot(settings.library_root.replace(/\\/g, "/"));
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
   }, [settings]);
@@ -133,8 +130,9 @@ export function SettingsTab() {
   // a custom path.
   useEffect(() => {
     if (detected === null) return;
+    const norm = (s: string) => s.replace(/\\/g, "/").toLowerCase();
     const match = detectedRoots.find(
-      (r) => r.libraryRoot.toLowerCase() === libraryRoot.toLowerCase(),
+      (r) => norm(r.libraryRoot) === norm(libraryRoot),
     );
     setInstallSelection(match ? match.libraryRoot : CUSTOM_OPTION);
     // Only run when detection finishes / settings hydrate; avoid stomping on
