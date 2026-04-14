@@ -1057,44 +1057,41 @@ export function HomeTab({ onUpdateDetected }: Props) {
         </GlassCard>
       )}
 
-      {dashboard?.announcement &&
-        (dashboard.announcement.title || dashboard.announcement.content) && (
-          <GlassCard>
-            <SectionHeader
-              icon="📣"
-              title={dashboard.announcement.title || "公告"}
-            />
-            <div className="text-sm text-white/75 whitespace-pre-wrap leading-relaxed">
-              {dashboard.announcement.content}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {dashboard.docs_url && (
-                <PrimaryButton
-                  variant="secondary"
-                  onClick={() => openExternalUrl(dashboard.docs_url)}
-                >
-                  📖 查看文档
-                </PrimaryButton>
-              )}
-              {dashboard.offline_package_url && (
-                <PrimaryButton
-                  variant="secondary"
-                  onClick={() => openExternalUrl(dashboard.offline_package_url)}
-                >
-                  📦 离线包下载
-                </PrimaryButton>
-              )}
-              <PrimaryButton
-                variant="secondary"
-                onClick={() =>
-                  openExternalUrl("https://qm.qq.com/q/cJb0EBg7Dy")
-                }
-              >
-                💬 加入QQ群
-              </PrimaryButton>
-            </div>
-          </GlassCard>
-        )}
+      <GlassCard>
+        <SectionHeader
+          icon="📣"
+          title={dashboard?.announcement?.title || "公告"}
+        />
+        <div className="text-sm text-white/75 whitespace-pre-wrap leading-relaxed">
+          {dashboard?.announcement?.content || (
+            <span className="text-white/40">暂无公告。</span>
+          )}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {dashboard?.docs_url && (
+            <PrimaryButton
+              variant="secondary"
+              onClick={() => openExternalUrl(dashboard.docs_url)}
+            >
+              📖 查看文档
+            </PrimaryButton>
+          )}
+          {dashboard?.offline_package_url && (
+            <PrimaryButton
+              variant="secondary"
+              onClick={() => openExternalUrl(dashboard.offline_package_url)}
+            >
+              📦 离线包下载
+            </PrimaryButton>
+          )}
+          <PrimaryButton
+            variant="secondary"
+            onClick={() => openExternalUrl("https://qm.qq.com/q/cJb0EBg7Dy")}
+          >
+            💬 加入QQ群
+          </PrimaryButton>
+        </div>
+      </GlassCard>
 
       {dashboard && dashboard.rules.length > 0 && (
         <GlassCard>
@@ -1113,51 +1110,6 @@ export function HomeTab({ onUpdateDetected }: Props) {
         </GlassCard>
       )}
 
-      <GlassCard>
-        <SectionHeader
-          icon="🔎"
-          title="已检测到的官方 R5Reloaded 安装"
-          subtitle="便于你参考路径避免重装；社区服需要安装到一个新的、不含中文的目录。"
-        />
-        {detected === null && (
-          <div className="text-sm text-white/40">检测中…</div>
-        )}
-        {detected && detected.length === 0 && (
-          <div className="text-sm text-white/50">
-            未检测到官方 R5Reloaded 安装。
-            {navigator.userAgent.includes("Mac") &&
-              "（macOS 上不支持检测，请在 Windows 上使用。）"}
-          </div>
-        )}
-        {detected && detected.length > 0 && (
-          <ul className="space-y-2">
-            {detected.map((d, i) => (
-              <li
-                key={`${d.source}-${i}`}
-                className="text-sm bg-white/5 rounded-lg px-3 py-2"
-              >
-                <div className="font-mono text-xs truncate">{d.path}</div>
-                <div className="text-[11px] text-white/40 mt-0.5">
-                  来源：{sourceLabel(d.source)}
-                  {d.version && ` · 版本 ${d.version}`}
-                  {d.channel && ` · 频道 ${d.channel}`}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </GlassCard>
     </div>
   );
-}
-
-function sourceLabel(s: DetectedInstall["source"]): string {
-  switch (s) {
-    case "shortcut":
-      return "开始菜单快捷方式";
-    case "registry":
-      return "卸载注册表";
-    case "library_scan":
-      return "目录扫描";
-  }
 }
