@@ -1,6 +1,6 @@
 [package]
 name = "launcher-app"
-version = "0.17.0"
+version = "0.18.0"
 description = "R5R 中国镜像启动器"
 authors = ["you"]
 edition = "2021"
@@ -70,3 +70,10 @@ strip = true
 winreg = "0.52"
 lnk = "0.5"
 known-folders = "1"
+
+# Single-instance plugin is desktop-only. We guard the whole block on
+# `not(any(target_os = "ios", target_os = "android"))` since Tauri's mobile
+# targets don't support it. In practice this crate only builds for Windows
+# where auto-update + taskbar pinning make multi-instance a real problem.
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+tauri-plugin-single-instance = "2"

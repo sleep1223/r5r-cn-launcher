@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(windows)]
+use crate::config::paths::LIBRARY_DIR_NAME;
+
+#[cfg(windows)]
 mod library_scan;
 #[cfg(windows)]
 mod registry;
@@ -46,11 +49,62 @@ pub async fn detect_existing(extra_roots: &[String]) -> Vec<DetectedInstall> {
         all.extend(shortcut_hits);
     }
     all.extend(scan_hits);
-    let mut deduped = dedupe(all);
-    for hit in deduped.iter_mut() {
-        hit.has_game = std::path::Path::new(&hit.path).join("r5apex.exe").exists();
+
+    // Registry/shortcut hits point at the *install base* (e.g.
+    // `D:\Program Files\R5Reloaded`), not at the runnable channel dir. The
+    // official R5Reloaded layout is always `<base>\R5R Library\<CHANNEL>\r5apex.exe`,
+    // so probe that sub-structure for each hit and replace a base-path hit with
+    // one entry per channel that actually contains r5apex.exe.
+    let expanded = expand_into_channels(all);
+    dedupe(expanded)
+}
+
+#[cfg(windows)]
+fn expand_into_channels(hits: Vec<DetectedInstall>) -> Vec<DetectedInstall> {
+    let mut out = Vec::new();
+    for hit in hits {
+        let base = std::path::Path::new(&hit.path);
+        // Case 1: hit already points at a channel dir (library_scan does this).
+        if base.join("r5apex.exe").is_file() {
+            let mut h = hit;
+            h.has_game = true;
+            out.push(h);
+            continue;
+        }
+        // Case 2: hit points at the install base. Probe `<base>\R5R Library\<CHANNEL>\`.
+        let lib = base.join(LIBRARY_DIR_NAME);
+        let mut expanded_any = false;
+        if let Ok(rd) = std::fs::read_dir(&lib) {
+            for entry in rd.flatten() {
+                let channel_dir = entry.path();
+                if !channel_dir.is_dir() {
+                    continue;
+                }
+                if !channel_dir.join("r5apex.exe").is_file() {
+                    continue;
+                }
+                expanded_any = true;
+                let channel = channel_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned());
+                out.push(DetectedInstall {
+                    source: hit.source.clone(),
+                    path: channel_dir.display().to_string(),
+                    channel,
+                    version: hit.version.clone(),
+                    has_game: true,
+                });
+            }
+        }
+        if !expanded_any {
+            // Keep the original hit so it still shows in the "detected" list,
+            // but with has_game=false so the UI won't try to launch from here.
+            let mut h = hit;
+            h.has_game = false;
+            out.push(h);
+        }
     }
-    deduped
+    out
 }
 
 #[cfg(not(windows))]
@@ -64,7 +118,8 @@ fn dedupe(mut v: Vec<DetectedInstall>) -> Vec<DetectedInstall> {
     use std::collections::HashSet;
     let mut seen: HashSet<String> = HashSet::new();
     v.retain(|d| {
-        let key = d.path.to_ascii_lowercase();
+        // Normalize separators so mixed forward/backslash paths dedupe.
+        let key = d.path.to_ascii_lowercase().replace('/', "\\");
         seen.insert(key)
     });
     v

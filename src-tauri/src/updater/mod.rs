@@ -114,38 +114,73 @@ pub async fn download_installer(
     Ok(dest)
 }
 
-/// Spawn a detached `cmd.exe` helper that waits for us to exit, runs the NSIS
-/// installer silently, then relaunches the updated exe. Then exit immediately.
+/// Spawn a fully windowless VBScript helper that waits for us to exit, runs
+/// the NSIS installer silently, then relaunches the updated exe. Then exit
+/// immediately.
 ///
-/// We can't wait for the installer ourselves: NSIS terminates the running
-/// launcher to free the .exe for replacement, so any code after `.status()`
-/// never runs. The helper survives because it's spawned `DETACHED_PROCESS`
-/// and has no parent-process dependency on us.
+/// Why VBScript instead of cmd/PowerShell: `wscript.exe` is a GUI-subsystem
+/// program with no console, so there is never a visible black window. cmd —
+/// even with `CREATE_NO_WINDOW` — flashes a console on some Windows 10/11
+/// machines (conhost / Windows Terminal takeover quirks), and PowerShell has
+/// its own ~100 ms startup flash. VBScript via `WScript.Shell.Run(cmd, 0, True)`
+/// also *blocks* on the installer, which is far more reliable than guessing
+/// at sleep durations.
+///
+/// The script is written as UTF-16 LE with BOM because wscript.exe falls back
+/// to the system ANSI codepage when no BOM is present. On a Chinese Windows
+/// that's GBK, which mangles any Unicode char in the exe path
+/// (e.g. `C:\Users\张三\...`) and breaks the relaunch.
 #[cfg(windows)]
 pub fn run_installer_and_exit(path: &std::path::Path) -> AppResult<()> {
     use std::os::windows::process::CommandExt;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
 
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let current_exe = std::env::current_exe()
         .map_err(|e| AppError::other(format!("无法获取当前 exe 路径: {}", e)))?;
 
-    // `timeout /t 1` waits ~1s for us to exit and release the .exe lock.
-    // `start ""` launches the new exe detached from cmd so it doesn't inherit
-    // a console window and cmd can exit right after.
+    // Embedded `"` inside a VBS string literal must be doubled. Paths with
+    // literal quotes are pathological but the replacement is cheap.
+    let escape_vbs = |s: String| s.replace('"', "\"\"");
+    let installer_vbs = escape_vbs(path.display().to_string());
+    let exe_vbs = escape_vbs(current_exe.display().to_string());
+
     let script = format!(
-        r#"timeout /t 1 /nobreak >nul & "{installer}" /S & timeout /t 2 /nobreak >nul & start "" "{exe}""#,
-        installer = path.display(),
-        exe = current_exe.display(),
+        "Dim sh : Set sh = CreateObject(\"WScript.Shell\")\r\n\
+         WScript.Sleep 1000\r\n\
+         sh.Run \"\"\"{installer}\"\" /S\", 0, True\r\n\
+         WScript.Sleep 500\r\n\
+         sh.Run \"\"\"{exe}\"\"\", 1, False\r\n",
+        installer = installer_vbs,
+        exe = exe_vbs,
     );
 
-    tracing::info!(target: "updater", "spawning detached updater helper: {}", script);
-    Command::new("cmd")
-        .args(["/C", &script])
-        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
+    // UTF-16 LE + BOM so wscript.exe uses Unicode regardless of the system
+    // codepage.
+    let mut bytes = vec![0xFF, 0xFE];
+    for unit in script.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+
+    let helper_path = std::env::temp_dir().join("r5r-cn-launcher-update.vbs");
+    std::fs::write(&helper_path, &bytes)
+        .map_err(|e| AppError::other(format!("写入更新助手脚本失败: {}", e)))?;
+
+    tracing::info!(
+        target: "updater",
+        "spawning update helper: {} (installer={}, relaunch={})",
+        helper_path.display(),
+        path.display(),
+        current_exe.display()
+    );
+
+    Command::new("wscript.exe")
+        .arg(&helper_path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| AppError::other(format!("启动更新助手失败: {}", e)))?;
 

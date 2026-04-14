@@ -10,7 +10,6 @@ import { autoAdoptExistingInstall, detectExistingR5R } from "../ipc/detect";
 import { fetchDashboardConfig } from "../ipc/dashboard";
 import { openExternalUrl, suggestInstallPath } from "../ipc/settings";
 import { detectAccelerators } from "../ipc/accelerator";
-import { getLauncherVersion } from "../ipc/updater";
 import { launchGame } from "../ipc/launch";
 import {
   cancelInstall,
@@ -29,15 +28,10 @@ import {
 } from "../ipc/types";
 import { getServers, ServerListItem } from "../api";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { LauncherUpdateInfo } from "../App";
 
 type Action = "install" | "update" | "play" | "blocked";
 
-interface Props {
-  onUpdateDetected: (info: LauncherUpdateInfo) => void;
-}
-
-export function HomeTab({ onUpdateDetected }: Props) {
+export function HomeTab() {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -175,41 +169,6 @@ export function HomeTab({ onUpdateDetected }: Props) {
       clearInterval(t);
     };
   }, []);
-
-  // Check for launcher self-update once the dashboard data arrives.
-  // If a newer version is found, notify the parent (App) which navigates
-  // to the About tab where the update UI lives.
-  useEffect(() => {
-    if (!dashboard) return;
-    if (!dashboard.launcher_version || !dashboard.launcher_update_url) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { current } = await getLauncherVersion();
-        if (cancelled) return;
-        const parse = (s: string) => s.replace(/^v/, "").split(".").map(Number);
-        const c = parse(current);
-        const r = parse(dashboard.launcher_version);
-        const isNewer =
-          r[0] > c[0] ||
-          (r[0] === c[0] && r[1] > c[1]) ||
-          (r[0] === c[0] && r[1] === c[1] && r[2] > c[2]);
-        if (isNewer) {
-          onUpdateDetected({
-            version: dashboard.launcher_version,
-            url: dashboard.launcher_update_url,
-            force: dashboard.force_update,
-          });
-        }
-      } catch {
-        // Version check failure is non-fatal — ignore.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboard]);
 
   // Auto-select the default channel if none is set.
   useEffect(() => {

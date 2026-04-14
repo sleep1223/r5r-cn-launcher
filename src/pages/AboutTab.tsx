@@ -3,7 +3,7 @@ import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { downloadAndApplyUpdate } from "../ipc/updater";
 import { listen } from "@tauri-apps/api/event";
-import type { LauncherUpdateInfo } from "../App";
+import type { LauncherUpdateInfo, UpdateCheckStatus } from "../App";
 
 interface UpdateProgress {
   bytes_done: number;
@@ -14,6 +14,10 @@ interface UpdateProgress {
 interface Props {
   pendingUpdate: LauncherUpdateInfo | null;
   onUpdateDismissed: () => void;
+  currentVersion: string;
+  checkStatus: UpdateCheckStatus;
+  checkError: string | null;
+  onCheckForUpdate: () => void;
 }
 
 function formatBytes(b: number): string {
@@ -22,7 +26,14 @@ function formatBytes(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function AboutTab({ pendingUpdate, onUpdateDismissed }: Props) {
+export function AboutTab({
+  pendingUpdate,
+  onUpdateDismissed,
+  currentVersion,
+  checkStatus,
+  checkError,
+  onCheckForUpdate,
+}: Props) {
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
@@ -81,7 +92,7 @@ export function AboutTab({ pendingUpdate, onUpdateDismissed }: Props) {
       <GlassCard>
         <div className="text-2xl font-semibold mb-2">R5R 中国镜像启动器</div>
         <div className="text-white/60 mb-4">
-          v{__APP_VERSION__} · Tauri + React
+          v{currentVersion} · Tauri + React
         </div>
         <div className="text-sm text-white/70 leading-relaxed space-y-2">
           <p>
@@ -95,7 +106,7 @@ export function AboutTab({ pendingUpdate, onUpdateDismissed }: Props) {
       </GlassCard>
 
       {/* Update card */}
-      {pendingUpdate && (
+      {pendingUpdate ? (
         <GlassCard
           className={
             pendingUpdate.force
@@ -160,13 +171,35 @@ export function AboutTab({ pendingUpdate, onUpdateDismissed }: Props) {
             )}
           </div>
         </GlassCard>
-      )}
-
-      {!pendingUpdate && (
+      ) : (
         <GlassCard>
-          <div className="flex items-center gap-2 text-sm text-emerald-300">
-            <span>✓</span>
-            <span>当前已是最新版本</span>
+          <SectionHeader
+            title="检查更新"
+            subtitle="启动时已自动检查一次，也可随时手动检查。"
+          />
+          <div className="flex items-center gap-3 flex-wrap">
+            <PrimaryButton
+              variant="secondary"
+              onClick={onCheckForUpdate}
+              disabled={checkStatus === "checking"}
+            >
+              {checkStatus === "checking" ? "检查中…" : "检查更新"}
+            </PrimaryButton>
+            {checkStatus === "up-to-date" && (
+              <span className="text-sm text-emerald-300">
+                ✓ 当前已是最新版本（v{currentVersion}）
+              </span>
+            )}
+            {checkStatus === "idle" && (
+              <span className="text-sm text-white/50">
+                当前版本 v{currentVersion}
+              </span>
+            )}
+            {checkStatus === "error" && (
+              <span className="text-sm text-red-300">
+                检查失败{checkError ? `：${checkError}` : ""}
+              </span>
+            )}
           </div>
         </GlassCard>
       )}
