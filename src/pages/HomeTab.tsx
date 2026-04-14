@@ -613,6 +613,13 @@ export function HomeTab({ onUpdateDetected }: Props) {
   /** Normalize path separators to forward slashes and strip trailing slash. */
   const fwd = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
 
+  const channelDisplayName = (ch: string) => {
+    switch (ch) {
+      case "live_game": return "R5Reloaded Live";
+      default: return ch;
+    }
+  };
+
   const STEP_LABELS = ["选择目录", "下载离线包", "导入安装", "校验文件"];
 
   return (
@@ -886,12 +893,12 @@ export function HomeTab({ onUpdateDetected }: Props) {
       {/* Non-forced update banner — shown at the top, dismissible. */}
 
       <GlassCard
-        className="relative overflow-hidden min-h-[340px]"
+        className="relative overflow-hidden"
         padding={false}
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 via-transparent to-purple-500/10" />
-        <div className="relative p-8 flex flex-col h-full">
-          <div className="flex-1">
+        <div className="relative p-8 flex flex-col">
+          <div>
             <div className="text-3xl font-bold tracking-tight">
               R5R 中国镜像启动器
             </div>
@@ -914,8 +921,8 @@ export function HomeTab({ onUpdateDetected }: Props) {
                   ) : (
                     <span className="size-1.5 rounded-full border border-white/40" />
                   )}
-                  <span className="font-mono">
-                    {settings?.selected_channel || "live_game"}
+                  <span>
+                    {channelDisplayName(settings?.selected_channel || "live_game")}
                   </span>
                 </span>
 
@@ -954,7 +961,7 @@ export function HomeTab({ onUpdateDetected }: Props) {
           </div>
 
           {showingProgress ? (
-            <div className="mt-6">
+            <div className="mt-4">
               <InstallProgress
                 progress={progress!}
                 logs={installLogs}
@@ -966,7 +973,7 @@ export function HomeTab({ onUpdateDetected }: Props) {
               />
             </div>
           ) : (
-            <div className="space-y-3 mt-6">
+            <div className="space-y-3 mt-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <PrimaryButton
                   variant={actionVariant(action)}

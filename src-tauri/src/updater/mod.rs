@@ -114,30 +114,40 @@ pub async fn download_installer(
     Ok(dest)
 }
 
-/// Run the downloaded NSIS installer silently, wait for it to finish,
-/// relaunch the newly installed exe, then exit the current process.
+/// Spawn a detached `cmd.exe` helper that waits for us to exit, runs the NSIS
+/// installer silently, then relaunches the updated exe. Then exit immediately.
+///
+/// We can't wait for the installer ourselves: NSIS terminates the running
+/// launcher to free the .exe for replacement, so any code after `.status()`
+/// never runs. The helper survives because it's spawned `DETACHED_PROCESS`
+/// and has no parent-process dependency on us.
 #[cfg(windows)]
 pub fn run_installer_and_exit(path: &std::path::Path) -> AppResult<()> {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
 
-    // Resolve the current exe path BEFORE the installer overwrites it —
-    // the path stays the same, only the binary on disk changes.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     let current_exe = std::env::current_exe()
         .map_err(|e| AppError::other(format!("无法获取当前 exe 路径: {}", e)))?;
 
-    tracing::info!(target: "updater", "launching silent installer: {}", path.display());
-    let status = Command::new(path)
-        .arg("/S") // NSIS silent install
-        .status() // wait for installer to finish (unlike spawn)
-        .map_err(|e| AppError::other(format!("启动安装程序失败: {}", e)))?;
+    // `timeout /t 1` waits ~1s for us to exit and release the .exe lock.
+    // `start ""` launches the new exe detached from cmd so it doesn't inherit
+    // a console window and cmd can exit right after.
+    let script = format!(
+        r#"timeout /t 1 /nobreak >nul & "{installer}" /S & timeout /t 2 /nobreak >nul & start "" "{exe}""#,
+        installer = path.display(),
+        exe = current_exe.display(),
+    );
 
-    tracing::info!(target: "updater", "installer exited with {:?}", status.code());
-
-    // Relaunch the (now-updated) exe.
-    tracing::info!(target: "updater", "relaunching {}", current_exe.display());
-    Command::new(&current_exe)
+    tracing::info!(target: "updater", "spawning detached updater helper: {}", script);
+    Command::new("cmd")
+        .args(["/C", &script])
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
-        .map_err(|e| AppError::other(format!("重启失败: {}", e)))?;
+        .map_err(|e| AppError::other(format!("启动更新助手失败: {}", e)))?;
 
     std::process::exit(0);
 }
