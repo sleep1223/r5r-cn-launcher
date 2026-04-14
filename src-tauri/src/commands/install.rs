@@ -2,7 +2,9 @@ use crate::config::Channel;
 use crate::manifest::fetch_manifest;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
-use crate::events::{new_job_id, InstallJobId};
+use crate::events::{
+    new_job_id, InstallJobId, InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS,
+};
 use crate::offline::dir_import::import_directory;
 use crate::offline::shape_detect::{detect_directory, detect_zip};
 use crate::offline::zip_import::import_zip;
@@ -11,7 +13,7 @@ use crate::state::{JobHandle, LauncherState, PauseState};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 // ===== Offline import =====
@@ -87,18 +89,35 @@ pub async fn start_offline_import(
         }
         .await;
 
-        if let Ok(channel) = result {
-            {
-                let mut s = settings_arc.write();
-                s.library_root = install_root.display().to_string();
-                if s.selected_channel.is_empty() {
-                    s.selected_channel = channel.clone();
+        match result {
+            Ok(channel) => {
+                {
+                    let mut s = settings_arc.write();
+                    s.library_root = install_root.display().to_string();
+                    if s.selected_channel.is_empty() {
+                        s.selected_channel = channel.clone();
+                    }
+                    let entry = s.channels.entry(channel).or_default();
+                    entry.installed = true;
                 }
-                let entry = s.channels.entry(channel).or_default();
-                entry.installed = true;
+                let snapshot = settings_arc.read().clone();
+                let _ = snapshot.save(&config_dir);
             }
-            let snapshot = settings_arc.read().clone();
-            let _ = snapshot.save(&config_dir);
+            Err(AppError::Cancelled) => {
+                let _ = app_clone.emit(
+                    EVT_INSTALL_PROGRESS,
+                    ProgressEvent::empty(job_id_clone.clone(), InstallPhase::Cancelled),
+                );
+            }
+            Err(e) => {
+                let _ = app_clone.emit(
+                    EVT_INSTALL_PROGRESS,
+                    ProgressEvent::empty(
+                        job_id_clone.clone(),
+                        InstallPhase::Failed { reason: e.to_string() },
+                    ),
+                );
+            }
         }
 
         jobs.remove(&job_id_clone);

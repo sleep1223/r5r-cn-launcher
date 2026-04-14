@@ -526,16 +526,19 @@ export function HomeTab() {
   };
 
   const handleWizardImportZip = async () => {
-    if (!settings?.library_root) return;
     setImportError(null);
-    const picked = await openDialog({
-      directory: false,
-      multiple: false,
-      title: "选择已下载的离线包 zip",
-      filters: [{ name: "Zip", extensions: ["zip"] }],
-    });
-    if (typeof picked !== "string") return;
+    if (!settings?.library_root) {
+      setImportError("请先在第 1 步选择安装目录");
+      return;
+    }
     try {
+      const picked = await openDialog({
+        directory: false,
+        multiple: false,
+        title: "选择已下载的离线包 zip",
+        filters: [{ name: "Zip", extensions: ["zip"] }],
+      });
+      if (typeof picked !== "string") return;
       const id = await startOfflineImport(settings.library_root, {
         type: "zip",
         path: picked,
@@ -547,15 +550,18 @@ export function HomeTab() {
   };
 
   const handleWizardImportDir = async () => {
-    if (!settings?.library_root) return;
     setImportError(null);
-    const picked = await openDialog({
-      directory: true,
-      multiple: false,
-      title: "选择已解压的离线包目录",
-    });
-    if (typeof picked !== "string") return;
+    if (!settings?.library_root) {
+      setImportError("请先在第 1 步选择安装目录");
+      return;
+    }
     try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择已解压的离线包目录",
+      });
+      if (typeof picked !== "string") return;
       const id = await startOfflineImport(settings.library_root, {
         type: "directory",
         path: picked,
