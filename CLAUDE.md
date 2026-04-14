@@ -24,6 +24,18 @@ Package manager is **pnpm**. The Tauri config wires it into the dev/build hooks.
 
 No linter/formatter is configured.
 
+## Releasing
+
+**Never bump the version proactively.** Only touch version numbers when the user explicitly asks (e.g. "递增版本", "bump to 0.18.0", "打 tag"). Do not sneak version bumps into unrelated commits.
+
+When the user does ask, version bumps must land in **four places in one commit**: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (run `cargo update -p launcher-app --manifest-path src-tauri/Cargo.toml`). After pushing the commit, **always** create and push a matching `vX.Y.Z` tag — a GitHub Action is wired to the tag push and won't fire otherwise:
+
+```
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Never push a version commit without its tag.
+
 ## Architecture
 
 ```
