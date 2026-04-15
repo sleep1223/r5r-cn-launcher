@@ -11,7 +11,6 @@
 use crate::error::{AppError, AppResult};
 use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -73,59 +72,43 @@ pub fn detect_directory(picked: &Path) -> AppResult<DetectedShape> {
     ))
 }
 
-/// Inspect a zip file and figure out the strip prefix and channel.
-/// Scans the central directory and emits `Preparing` progress events every
-/// 200ms so the UI shows activity on multi-GB packs (otherwise the user sees
-/// an unresponsive "准备中" indicator for the whole detect+totals phase).
-/// Checks `cancel` between entries so the wizard's 取消 button actually works
-/// during the scan.
+/// Inspect a zip file and figure out the strip prefix, channel, total
+/// uncompressed bytes, and file count — all by reading the in-memory central
+/// directory. Does NOT call `by_index`, which seeks to every entry's local
+/// header and was the reason "准备中" hung for many seconds on 30 GB packs.
 pub fn detect_zip(
     app: &AppHandle,
     job_id: &str,
     cancel: &CancellationToken,
     zip_path: &Path,
 ) -> AppResult<DetectedZipShape> {
-    use std::fs::File;
-    let f = File::open(zip_path)?;
-    let mut archive = zip::ZipArchive::new(f)
+    emit_scan_progress(app, job_id);
+
+    // ZipArchive::new reads the EOCD + full central directory once. For a
+    // 30 GB pack with ~50k entries the CD itself is only a few MB, so this is
+    // a single linear read — seconds at worst on HDD, milliseconds on SSD.
+    let f = std::fs::File::open(zip_path)?;
+    let archive = zip::ZipArchive::new(f)
         .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
 
-    let archive_len = archive.len();
-    let mut last_emit = Instant::now();
-    emit_scan_progress(app, job_id, 0, archive_len);
-
-    // First pass: find the first entry whose path ends with `r5apex.exe` — that
-    // anchors the channel directory. Stops as soon as we find one.
-    let mut anchor_inside_zip: Option<String> = None;
-    for i in 0..archive_len {
-        if cancel.is_cancelled() {
-            return Err(AppError::Cancelled);
-        }
-        let e = archive
-            .by_index(i)
-            .map_err(|e| AppError::other(format!("读取 zip 条目失败: {}", e)))?;
-        let name = e.name().to_string();
-        if name.to_ascii_lowercase().ends_with("/r5apex.exe")
-            || name.to_ascii_lowercase() == "r5apex.exe"
-        {
-            anchor_inside_zip = Some(name);
-            break;
-        }
-        if last_emit.elapsed().as_millis() > 200 {
-            last_emit = Instant::now();
-            emit_scan_progress(app, job_id, i + 1, archive_len);
-        }
+    if cancel.is_cancelled() {
+        return Err(AppError::Cancelled);
     }
 
-    let anchor = anchor_inside_zip.ok_or_else(|| {
-        AppError::InvalidPath(
-            "zip 包中未找到 r5apex.exe，请确认这是一个有效的 R5R 离线包。".into(),
-        )
-    })?;
+    // Pure in-memory scans from here down.
+    let anchor = archive
+        .file_names()
+        .find(|n| {
+            let l = n.to_ascii_lowercase();
+            l.ends_with("/r5apex.exe") || l == "r5apex.exe"
+        })
+        .ok_or_else(|| {
+            AppError::InvalidPath(
+                "zip 包中未找到 r5apex.exe，请确认这是一个有效的 R5R 离线包。".into(),
+            )
+        })?
+        .to_string();
 
-    // anchor is something like "R5R Library/LIVE/r5apex.exe" or "LIVE/r5apex.exe".
-    // The component immediately before "r5apex.exe" is the channel folder, and
-    // everything before that is the strip prefix.
     let parts: Vec<&str> = anchor.split('/').collect();
     if parts.len() < 2 {
         return Err(AppError::InvalidPath(format!(
@@ -136,27 +119,16 @@ pub fn detect_zip(
     let channel = parts[parts.len() - 2].to_string();
     let strip_prefix = parts[..parts.len() - 1].join("/") + "/";
 
-    // Second pass: tally total bytes / file count for everything under the
-    // strip prefix, so import_zip doesn't have to scan again. Same cancel +
-    // progress plumbing.
-    let mut total_bytes: u64 = 0;
-    let mut file_count: usize = 0;
-    for i in 0..archive_len {
-        if cancel.is_cancelled() {
-            return Err(AppError::Cancelled);
-        }
-        let e = archive
-            .by_index(i)
-            .map_err(|e| AppError::other(format!("读取 zip 条目失败: {}", e)))?;
-        if !e.is_dir() && e.name().starts_with(&strip_prefix) {
-            total_bytes += e.size();
-            file_count += 1;
-        }
-        if last_emit.elapsed().as_millis() > 200 {
-            last_emit = Instant::now();
-            emit_scan_progress(app, job_id, i + 1, archive_len);
-        }
-    }
+    let file_count = archive
+        .file_names()
+        .filter(|n| n.starts_with(&strip_prefix) && !n.ends_with('/'))
+        .count();
+
+    // decompressed_size() sums uncompressed sizes straight from the central
+    // directory — no I/O. Returns None for data-descriptor zips (rare); in
+    // that case fall back to 0 and the UI switches to file-count-based
+    // progress.
+    let total_bytes = archive.decompressed_size().map(|v| v as u64).unwrap_or(0);
 
     Ok(DetectedZipShape {
         strip_prefix,
@@ -166,20 +138,10 @@ pub fn detect_zip(
     })
 }
 
-fn emit_scan_progress(app: &AppHandle, job_id: &str, done: usize, total: usize) {
+fn emit_scan_progress(app: &AppHandle, job_id: &str) {
     let _ = app.emit(
         EVT_INSTALL_PROGRESS,
-        ProgressEvent {
-            job_id: job_id.to_string(),
-            phase: InstallPhase::Preparing,
-            file_index: done,
-            file_count: total,
-            bytes_done: 0,
-            bytes_total: 0,
-            current_file: String::new(),
-            speed_bps: 0,
-            eta_seconds: 0,
-        },
+        ProgressEvent::empty(job_id.to_string(), InstallPhase::Preparing),
     );
 }
 
