@@ -163,6 +163,21 @@ pub struct DetectedZipShape {
     pub file_count: usize,
 }
 
+/// Lightweight zip scan for the patch path. Patches may not ship a full
+/// `r5apex.exe` so the full `detect_zip` check would reject them — here we
+/// just count kept-prefix files without the anchor requirement.
+pub fn scan_zip_kept_entries(zip_path: &Path) -> AppResult<(u64, usize)> {
+    let f = std::fs::File::open(zip_path)?;
+    let archive = zip::ZipArchive::new(f)
+        .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
+    let file_count = archive
+        .file_names()
+        .filter(|n| !n.ends_with('/') && zip_entry_keep(n))
+        .count();
+    let total_bytes = archive.decompressed_size().map(|v| v as u64).unwrap_or(0);
+    Ok((total_bytes, file_count))
+}
+
 fn single_channel_in(dir: &Path) -> AppResult<String> {
     let mut candidates: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(dir)? {

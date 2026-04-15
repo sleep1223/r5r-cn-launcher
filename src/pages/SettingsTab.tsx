@@ -397,8 +397,8 @@ export function SettingsTab() {
           ))}
         </div>
         {updateStrategy === "patch" && (
-          <div className="text-xs text-amber-300 mt-2">
-            注：补丁包路径暂未实现，当前会自动回退到完整校验。
+          <div className="text-xs text-white/50 mt-2">
+            注：补丁包仅支持单跳（本地版本 → 远端版本），未找到匹配路径时会自动回退到完整校验。
           </div>
         )}
       </GlassCard>

@@ -1,5 +1,6 @@
 use crate::config::{Channel, UpdateStrategy};
 use crate::download::chunk::download_chunked;
+use crate::download::patch::{apply_patch, PatchOutcome};
 use crate::download::progress::ProgressAggregator;
 use crate::download::retry::RetryPolicy;
 use crate::download::worker::{download_single, entry_local_path};
@@ -88,14 +89,6 @@ pub async fn run_install(
             s.update_strategy,
         )
     };
-    if mode == InstallMode::Update && update_strategy == UpdateStrategy::Patch {
-        emit_log(
-            &app,
-            &job_id,
-            LogLevel::Warn,
-            "当前更新策略为「补丁包」，但补丁路径暂未实现，回退到完整校验",
-        );
-    }
     if mirror_domain.is_empty() {
         return Err(AppError::settings("尚未配置镜像源域名"));
     }
@@ -167,6 +160,54 @@ pub async fn run_install(
                 emit_log(&app, &job_id, LogLevel::Info, "本地版本与远端一致，无需更新");
                 emit(InstallPhase::Complete);
                 return Ok(());
+            }
+            // Patch strategy: try to download + extract a patch zip that
+            // covers exactly `local_version → remote_version`. On success
+            // we're done; if the dashboard has no matching patch, we log and
+            // fall through to the full verify pipeline below.
+            if update_strategy == UpdateStrategy::Patch && !local_version.is_empty() {
+                emit_log(
+                    &app,
+                    &job_id,
+                    LogLevel::Info,
+                    format!("尝试应用补丁包: {} → {}", local_version, rv),
+                );
+                match apply_patch(
+                    &app,
+                    state,
+                    &job_id,
+                    &channel.name,
+                    &local_version,
+                    rv,
+                    cancel.clone(),
+                )
+                .await
+                {
+                    Ok(PatchOutcome::Applied) => {
+                        emit_log(&app, &job_id, LogLevel::Info, "补丁包应用完成 ✓");
+                        return Ok(());
+                    }
+                    Ok(PatchOutcome::NotApplicable) => {
+                        emit_log(
+                            &app,
+                            &job_id,
+                            LogLevel::Warn,
+                            "未找到匹配的补丁包路径，回退到完整校验",
+                        );
+                    }
+                    Err(AppError::Cancelled) => {
+                        emit(InstallPhase::Cancelled);
+                        return Err(AppError::Cancelled);
+                    }
+                    Err(e) => {
+                        emit_log(
+                            &app,
+                            &job_id,
+                            LogLevel::Warn,
+                            format!("补丁包应用失败: {} — 回退到完整校验", e),
+                        );
+                    }
+                }
             }
         }
     }

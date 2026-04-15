@@ -1,4 +1,5 @@
 pub mod chunk;
+pub mod patch;
 pub mod pipeline;
 pub mod progress;
 pub mod retry;

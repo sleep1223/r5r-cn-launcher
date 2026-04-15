@@ -12,6 +12,10 @@ use tokio_util::sync::CancellationToken;
 /// verbatim so the content lands at `<install_root>/R5R Library/...` and
 /// `<install_root>/R5R Launcher/...`, matching the overlay-onto-R5Reloaded
 /// layout the official packs document.
+///
+/// Also used by the patch update flow, which gets a zip of the same shape —
+/// for patches `install_root` points at the user's `library_root`, and the
+/// `File::create` overwrite semantics directly replace the outdated files.
 pub async fn import_zip(
     app: &AppHandle,
     job_id: &str,
@@ -20,16 +24,47 @@ pub async fn import_zip(
     install_root: &Path,
     cancel: CancellationToken,
 ) -> AppResult<()> {
+    extract_keep_prefixes(
+        app,
+        job_id,
+        zip_path,
+        install_root,
+        shape.total_bytes,
+        shape.file_count,
+        cancel,
+    )
+    .await?;
+    let _ = app.emit(
+        EVT_INSTALL_PROGRESS,
+        ProgressEvent::empty(job_id.into(), InstallPhase::Complete),
+    );
+    Ok(())
+}
+
+/// Core zip extraction. Iterates the zip's central directory, extracting every
+/// regular-file entry under `R5R Library/` or `R5R Launcher/` to
+/// `install_root/<entry path>`, overwriting existing files in place. Emits
+/// `install://progress` events at ~200 ms cadence.
+///
+/// `total_bytes` and `file_count` should come from a prior `detect_zip` call
+/// so we avoid a second central-directory scan. When `total_bytes` is zero
+/// (data-descriptor zip), the UI falls back to file-count progress.
+///
+/// Does NOT emit `Complete` — the caller decides whether this extraction is
+/// the last step of the job.
+pub async fn extract_keep_prefixes(
+    app: &AppHandle,
+    job_id: &str,
+    zip_path: &Path,
+    install_root: &Path,
+    total_bytes: u64,
+    file_count: usize,
+    cancel: CancellationToken,
+) -> AppResult<()> {
     std::fs::create_dir_all(install_root)?;
 
-    // Totals come from detect_zip — don't re-scan the central directory here,
-    // it was the main reason the wizard looked stuck on "准备中".
-    let total_bytes = shape.total_bytes;
-    let file_count = shape.file_count;
-
     // Emit Downloading immediately so the UI flips past Preparing the moment
-    // extraction starts. detect_zip only touches the central directory, so
-    // there's no real "preparing" work left to do.
+    // extraction starts.
     let _ = app.emit(
         EVT_INSTALL_PROGRESS,
         ProgressEvent {
@@ -128,9 +163,5 @@ pub async fn import_zip(
         file_index += 1;
     }
 
-    let _ = app.emit(
-        EVT_INSTALL_PROGRESS,
-        ProgressEvent::empty(job_id.into(), InstallPhase::Complete),
-    );
     Ok(())
 }
