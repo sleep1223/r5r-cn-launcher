@@ -9,9 +9,8 @@
 //! Anything else is rejected with a clear error so the user can fix the pack.
 
 use crate::error::{AppError, AppResult};
-use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 /// What we extracted from inspecting the pack.
@@ -72,18 +71,29 @@ pub fn detect_directory(picked: &Path) -> AppResult<DetectedShape> {
     ))
 }
 
-/// Inspect a zip file and figure out the strip prefix, channel, total
-/// uncompressed bytes, and file count — all by reading the in-memory central
-/// directory. Does NOT call `by_index`, which seeks to every entry's local
-/// header and was the reason "准备中" hung for many seconds on 30 GB packs.
+/// Top-level folders inside the zip that we extract. Everything else (README
+/// blurbs, build-specific scripts, etc.) is silently skipped.
+pub const ZIP_KEEP_PREFIXES: &[&str] = &["R5R Library/", "R5R Launcher/"];
+
+/// Check whether a zip entry name falls under one of the keep-prefixes.
+/// Case-insensitive match on the prefix; the remainder is preserved as-is.
+pub fn zip_entry_keep(name: &str) -> bool {
+    ZIP_KEEP_PREFIXES
+        .iter()
+        .any(|p| name.len() >= p.len() && name[..p.len()].eq_ignore_ascii_case(p))
+}
+
+/// Inspect a zip file and figure out the channel, total uncompressed bytes,
+/// and file count for the subset of entries under `R5R Library/` and
+/// `R5R Launcher/` — all by reading the in-memory central directory. Does
+/// NOT call `by_index`, which seeks to every entry's local header and was
+/// the reason "准备中" hung for many seconds on 30 GB packs.
 pub fn detect_zip(
-    app: &AppHandle,
-    job_id: &str,
+    _app: &AppHandle,
+    _job_id: &str,
     cancel: &CancellationToken,
     zip_path: &Path,
 ) -> AppResult<DetectedZipShape> {
-    emit_scan_progress(app, job_id);
-
     // ZipArchive::new reads the EOCD + full central directory once. For a
     // 30 GB pack with ~50k entries the CD itself is only a few MB, so this is
     // a single linear read — seconds at worst on HDD, milliseconds on SSD.
@@ -95,67 +105,61 @@ pub fn detect_zip(
         return Err(AppError::Cancelled);
     }
 
-    // Pure in-memory scans from here down.
+    // Pure in-memory scans from here down. Find a `R5R Library/<channel>/r5apex.exe`
+    // to nail down the channel name for settings updates.
     let anchor = archive
         .file_names()
         .find(|n| {
             let l = n.to_ascii_lowercase();
-            l.ends_with("/r5apex.exe") || l == "r5apex.exe"
+            l.starts_with("r5r library/") && l.ends_with("/r5apex.exe")
         })
         .ok_or_else(|| {
             AppError::InvalidPath(
-                "zip 包中未找到 r5apex.exe，请确认这是一个有效的 R5R 离线包。".into(),
+                "zip 包中未找到 R5R Library/<频道>/r5apex.exe，请确认这是一个有效的 R5R 离线包。"
+                    .into(),
             )
         })?
         .to_string();
 
     let parts: Vec<&str> = anchor.split('/').collect();
-    if parts.len() < 2 {
+    if parts.len() < 3 {
         return Err(AppError::InvalidPath(format!(
             "zip 内的 r5apex.exe 路径无效: {}",
             anchor
         )));
     }
     let channel = parts[parts.len() - 2].to_string();
-    let strip_prefix = parts[..parts.len() - 1].join("/") + "/";
 
+    // File count across kept prefixes — `file_names()` is purely in-memory.
     let file_count = archive
         .file_names()
-        .filter(|n| n.starts_with(&strip_prefix) && !n.ends_with('/'))
+        .filter(|n| !n.ends_with('/') && zip_entry_keep(n))
         .count();
 
-    // decompressed_size() sums uncompressed sizes straight from the central
-    // directory — no I/O. Returns None for data-descriptor zips (rare); in
-    // that case fall back to 0 and the UI switches to file-count-based
+    // Total bytes: archive-level sum from the central directory. When most of
+    // the zip is game content (the typical case), the over-count from any
+    // top-level README-style extras is negligible — and on data-descriptor
+    // zips this returns None, in which case the UI falls back to file-count
     // progress.
     let total_bytes = archive.decompressed_size().map(|v| v as u64).unwrap_or(0);
 
     Ok(DetectedZipShape {
-        strip_prefix,
         channel,
         total_bytes,
         file_count,
     })
 }
 
-fn emit_scan_progress(app: &AppHandle, job_id: &str) {
-    let _ = app.emit(
-        EVT_INSTALL_PROGRESS,
-        ProgressEvent::empty(job_id.to_string(), InstallPhase::Preparing),
-    );
-}
-
 #[derive(Debug, Clone)]
 pub struct DetectedZipShape {
-    /// Path prefix inside the zip that should be stripped before extracting,
-    /// e.g. `R5R Library/LIVE/`. Entries that don't start with this prefix
-    /// are ignored.
-    pub strip_prefix: String,
+    /// Channel name inferred from `R5R Library/<channel>/r5apex.exe` — used
+    /// to update `selected_channel` in settings after import.
     pub channel: String,
-    /// Total uncompressed bytes across entries matching the prefix — filled
-    /// in by `detect_zip` so the importer can skip a second full scan.
+    /// Total uncompressed bytes across kept entries (best-effort; may be 0
+    /// for data-descriptor zips, in which case the UI falls back to
+    /// file-count-based progress).
     pub total_bytes: u64,
-    /// Number of matching regular-file entries.
+    /// Number of regular-file entries under `R5R Library/` or `R5R Launcher/`.
     pub file_count: usize,
 }
 

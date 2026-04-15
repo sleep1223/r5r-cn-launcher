@@ -211,7 +211,13 @@ export function HomeTab() {
       void reload();
       setJobPaused(false);
       setActiveJobPausable(false);
-      window.setTimeout(() => setActiveJobId(null), 1500);
+      // Capture the id — the wizard auto-trigger can start a *new* job before
+      // this timer fires, and without this guard the stale timer would clear
+      // the newly-set activeJobId and make the progress panel flicker.
+      const justFinished = activeJobId;
+      window.setTimeout(() => {
+        setActiveJobId((cur) => (cur === justFinished ? null : cur));
+      }, 1500);
     }
   }, [progress, activeJobId, reload]);
 
@@ -607,39 +613,53 @@ export function HomeTab() {
 
   const STEP_LABELS = ["选择目录", "下载离线包", "导入安装", "校验文件"];
 
+  // `wizardDismissed` is intentionally component-local state (not persisted) so
+  // that closing and re-opening the launcher re-shows onboarding for users who
+  // haven't finished it. Skipping only hides the wizard for the current session.
+  const wizardOpen = needsOnboarding && !wizardDismissed;
+
   return (
     <div className="p-6 space-y-5">
-      {needsOnboarding && !wizardDismissed && (
+      {wizardOpen && (
         <GlassCard className="border-blue-400/40 bg-blue-500/[0.08]">
-          {/* Step indicator */}
-          <div className="flex items-center gap-2 mb-4">
-            {STEP_LABELS.map((label, i) => (
-              <div key={label} className="flex items-center gap-2">
-                {i > 0 && <div className="w-6 h-px bg-white/20" />}
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`size-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                      i < wizardStep
-                        ? "bg-emerald-400/80 text-black"
-                        : i === wizardStep
-                          ? "bg-blue-400/80 text-black"
-                          : "bg-white/10 text-white/40"
-                    }`}
-                  >
-                    {i < wizardStep ? "✓" : i + 1}
-                  </span>
-                  <span
-                    className={`text-[11px] ${
-                      i === wizardStep
-                        ? "text-blue-200 font-medium"
-                        : "text-white/40"
-                    }`}
-                  >
-                    {label}
-                  </span>
+          {/* Step indicator + skip */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              {STEP_LABELS.map((label, i) => (
+                <div key={label} className="flex items-center gap-2">
+                  {i > 0 && <div className="w-6 h-px bg-white/20" />}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`size-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                        i < wizardStep
+                          ? "bg-emerald-400/80 text-black"
+                          : i === wizardStep
+                            ? "bg-blue-400/80 text-black"
+                            : "bg-white/10 text-white/40"
+                      }`}
+                    >
+                      {i < wizardStep ? "✓" : i + 1}
+                    </span>
+                    <span
+                      className={`text-[11px] ${
+                        i === wizardStep
+                          ? "text-blue-200 font-medium"
+                          : "text-white/40"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setWizardDismissed(true)}
+              className="text-xs text-white/50 hover:text-white/90 px-2 py-1 rounded hover:bg-white/5 shrink-0"
+            >
+              跳过
+            </button>
           </div>
 
           {/* Step 0: Pick install directory */}
@@ -796,12 +816,6 @@ export function HomeTab() {
                 >
                   已下载，进入下一步
                 </PrimaryButton>
-                <PrimaryButton
-                  variant="secondary"
-                  onClick={() => setWizardDismissed(true)}
-                >
-                  跳过
-                </PrimaryButton>
               </div>
             </div>
           )}
@@ -877,6 +891,7 @@ export function HomeTab() {
 
       {/* Non-forced update banner — shown at the top, dismissible. */}
 
+      {!wizardOpen && (
       <GlassCard
         className="relative overflow-hidden"
         padding={false}
@@ -1010,6 +1025,7 @@ export function HomeTab() {
           )}
         </div>
       </GlassCard>
+      )}
 
       {accelerators.length > 0 && (
         <GlassCard className="border-amber-400/30 bg-amber-500/[0.06]">

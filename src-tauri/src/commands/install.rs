@@ -56,15 +56,6 @@ pub async fn start_offline_import(
     let settings_arc = state.settings.clone();
     let config_dir = state.config_dir.read().clone();
 
-    // Emit Preparing *before* the spawn so the UI gets immediate feedback,
-    // even if the sync detect_zip / WalkDir on a huge pack takes a few
-    // seconds. Without this the user saw the dialog close with no visible
-    // change — which read as "button did nothing".
-    let _ = app.emit(
-        EVT_INSTALL_PROGRESS,
-        ProgressEvent::empty(job_id.clone(), InstallPhase::Preparing),
-    );
-
     tauri::async_runtime::spawn(async move {
         let result: AppResult<String> = async {
             match source {
@@ -103,9 +94,13 @@ pub async fn start_offline_import(
                 {
                     let mut s = settings_arc.write();
                     s.library_root = install_root.display().to_string();
-                    if s.selected_channel.is_empty() {
-                        s.selected_channel = channel.clone();
-                    }
+                    // Always point at the freshly-imported channel — the
+                    // auto-select effect elsewhere may have set this to a
+                    // different canonical value ("live_game") before the
+                    // import ran, which left `install_dir` pointing at a
+                    // folder that doesn't exist and caused the subsequent
+                    // repair to re-download the entire pack.
+                    s.selected_channel = channel.clone();
                     let entry = s.channels.entry(channel).or_default();
                     entry.installed = true;
                 }
