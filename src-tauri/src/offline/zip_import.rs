@@ -20,32 +20,14 @@ pub async fn import_zip(
     let dest_root = install_root.join("R5R Library").join(&shape.channel);
     std::fs::create_dir_all(&dest_root)?;
 
-    let _ = app.emit(
-        EVT_INSTALL_PROGRESS,
-        ProgressEvent::empty(job_id.into(), InstallPhase::Preparing),
-    );
+    // Totals come from detect_zip — don't re-scan the central directory here,
+    // it was the main reason the wizard looked stuck on "准备中".
+    let total_bytes = shape.total_bytes;
+    let file_count = shape.file_count;
 
-    // Open archive twice — once to compute totals, once to extract. Zip
-    // uncompressed sizes are in the local file headers so this is cheap.
     let f = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(f)
         .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
-
-    let mut total_bytes: u64 = 0;
-    let mut file_count: usize = 0;
-    for i in 0..archive.len() {
-        let e = archive
-            .by_index(i)
-            .map_err(|e| AppError::other(format!("zip 条目: {}", e)))?;
-        if e.is_dir() {
-            continue;
-        }
-        if !e.name().starts_with(&shape.strip_prefix) {
-            continue;
-        }
-        total_bytes += e.size();
-        file_count += 1;
-    }
 
     let mut bytes_done: u64 = 0;
     let mut file_index: usize = 0;

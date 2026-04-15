@@ -9,7 +9,11 @@
 //! Anything else is rejected with a clear error so the user can fix the pack.
 
 use crate::error::{AppError, AppResult};
+use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
+use tauri::{AppHandle, Emitter};
+use tokio_util::sync::CancellationToken;
 
 /// What we extracted from inspecting the pack.
 #[derive(Debug, Clone)]
@@ -70,16 +74,33 @@ pub fn detect_directory(picked: &Path) -> AppResult<DetectedShape> {
 }
 
 /// Inspect a zip file and figure out the strip prefix and channel.
-pub fn detect_zip(zip_path: &Path) -> AppResult<DetectedZipShape> {
+/// Scans the central directory and emits `Preparing` progress events every
+/// 200ms so the UI shows activity on multi-GB packs (otherwise the user sees
+/// an unresponsive "准备中" indicator for the whole detect+totals phase).
+/// Checks `cancel` between entries so the wizard's 取消 button actually works
+/// during the scan.
+pub fn detect_zip(
+    app: &AppHandle,
+    job_id: &str,
+    cancel: &CancellationToken,
+    zip_path: &Path,
+) -> AppResult<DetectedZipShape> {
     use std::fs::File;
     let f = File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(f)
         .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
 
-    // Find the first entry whose path contains `r5apex.exe` — that anchors
-    // the channel directory.
+    let archive_len = archive.len();
+    let mut last_emit = Instant::now();
+    emit_scan_progress(app, job_id, 0, archive_len);
+
+    // First pass: find the first entry whose path ends with `r5apex.exe` — that
+    // anchors the channel directory. Stops as soon as we find one.
     let mut anchor_inside_zip: Option<String> = None;
-    for i in 0..archive.len() {
+    for i in 0..archive_len {
+        if cancel.is_cancelled() {
+            return Err(AppError::Cancelled);
+        }
         let e = archive
             .by_index(i)
             .map_err(|e| AppError::other(format!("读取 zip 条目失败: {}", e)))?;
@@ -89,6 +110,10 @@ pub fn detect_zip(zip_path: &Path) -> AppResult<DetectedZipShape> {
         {
             anchor_inside_zip = Some(name);
             break;
+        }
+        if last_emit.elapsed().as_millis() > 200 {
+            last_emit = Instant::now();
+            emit_scan_progress(app, job_id, i + 1, archive_len);
         }
     }
 
@@ -111,10 +136,51 @@ pub fn detect_zip(zip_path: &Path) -> AppResult<DetectedZipShape> {
     let channel = parts[parts.len() - 2].to_string();
     let strip_prefix = parts[..parts.len() - 1].join("/") + "/";
 
+    // Second pass: tally total bytes / file count for everything under the
+    // strip prefix, so import_zip doesn't have to scan again. Same cancel +
+    // progress plumbing.
+    let mut total_bytes: u64 = 0;
+    let mut file_count: usize = 0;
+    for i in 0..archive_len {
+        if cancel.is_cancelled() {
+            return Err(AppError::Cancelled);
+        }
+        let e = archive
+            .by_index(i)
+            .map_err(|e| AppError::other(format!("读取 zip 条目失败: {}", e)))?;
+        if !e.is_dir() && e.name().starts_with(&strip_prefix) {
+            total_bytes += e.size();
+            file_count += 1;
+        }
+        if last_emit.elapsed().as_millis() > 200 {
+            last_emit = Instant::now();
+            emit_scan_progress(app, job_id, i + 1, archive_len);
+        }
+    }
+
     Ok(DetectedZipShape {
         strip_prefix,
         channel,
+        total_bytes,
+        file_count,
     })
+}
+
+fn emit_scan_progress(app: &AppHandle, job_id: &str, done: usize, total: usize) {
+    let _ = app.emit(
+        EVT_INSTALL_PROGRESS,
+        ProgressEvent {
+            job_id: job_id.to_string(),
+            phase: InstallPhase::Preparing,
+            file_index: done,
+            file_count: total,
+            bytes_done: 0,
+            bytes_total: 0,
+            current_file: String::new(),
+            speed_bps: 0,
+            eta_seconds: 0,
+        },
+    );
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +190,11 @@ pub struct DetectedZipShape {
     /// are ignored.
     pub strip_prefix: String,
     pub channel: String,
+    /// Total uncompressed bytes across entries matching the prefix — filled
+    /// in by `detect_zip` so the importer can skip a second full scan.
+    pub total_bytes: u64,
+    /// Number of matching regular-file entries.
+    pub file_count: usize,
 }
 
 fn single_channel_in(dir: &Path) -> AppResult<String> {

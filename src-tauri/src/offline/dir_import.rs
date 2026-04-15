@@ -24,12 +24,37 @@ pub async fn import_directory(
     std::fs::create_dir_all(&dest_root)?;
 
     // Plan: walk the source tree once, collect all regular files + total size.
+    // Emit Preparing progress periodically and check cancel between entries so
+    // the 取消 button actually interrupts a slow scan on spinning disks.
     emit(app, ProgressEvent::empty(job_id.into(), InstallPhase::Preparing));
     let mut files: Vec<(PathBuf, PathBuf, u64)> = Vec::new();
     let mut total_bytes: u64 = 0;
+    let mut scanned: usize = 0;
+    let mut last_scan_emit = Instant::now();
     for entry in WalkDir::new(&shape.source_root) {
+        if cancel.is_cancelled() {
+            return Err(AppError::Cancelled);
+        }
         let entry = entry.map_err(|e| AppError::other(format!("walkdir: {}", e)))?;
+        scanned += 1;
         if !entry.file_type().is_file() {
+            if last_scan_emit.elapsed().as_millis() > 200 {
+                last_scan_emit = Instant::now();
+                emit(
+                    app,
+                    ProgressEvent {
+                        job_id: job_id.into(),
+                        phase: InstallPhase::Preparing,
+                        file_index: scanned,
+                        file_count: 0,
+                        bytes_done: 0,
+                        bytes_total: 0,
+                        current_file: String::new(),
+                        speed_bps: 0,
+                        eta_seconds: 0,
+                    },
+                );
+            }
             continue;
         }
         let src = entry.into_path();
@@ -41,6 +66,23 @@ pub async fn import_directory(
         let size = std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
         total_bytes += size;
         files.push((src, dst, size));
+        if last_scan_emit.elapsed().as_millis() > 200 {
+            last_scan_emit = Instant::now();
+            emit(
+                app,
+                ProgressEvent {
+                    job_id: job_id.into(),
+                    phase: InstallPhase::Preparing,
+                    file_index: scanned,
+                    file_count: 0,
+                    bytes_done: 0,
+                    bytes_total: 0,
+                    current_file: String::new(),
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                },
+            );
+        }
     }
     let file_count = files.len();
 
