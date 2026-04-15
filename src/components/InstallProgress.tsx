@@ -11,6 +11,12 @@ interface Props {
   onTogglePause?: () => void;
   /** Current pause state — drives the toggle label. */
   paused?: boolean;
+  /**
+   * Shown as 关闭 when the job is in a terminal state (complete/failed/
+   * cancelled). Lets the user dismiss a pinned failure reason so the
+   * surrounding action buttons come back.
+   */
+  onDismiss?: () => void;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -31,6 +37,7 @@ export function InstallProgress({
   onCancel,
   onTogglePause,
   paused = false,
+  onDismiss,
 }: Props) {
   const phase = progress.phase.phase;
   const [showLogs, setShowLogs] = useState(false);
@@ -191,6 +198,16 @@ export function InstallProgress({
               取消
             </PrimaryButton>
           )}
+        </div>
+      )}
+
+      {/* Dismiss button for terminal states — lets the user clear a pinned
+          failure/cancelled panel so the normal action buttons come back. */}
+      {isFinal && onDismiss && (
+        <div className="flex items-center gap-2">
+          <PrimaryButton variant="secondary" onClick={onDismiss}>
+            关闭
+          </PrimaryButton>
         </div>
       )}
     </div>

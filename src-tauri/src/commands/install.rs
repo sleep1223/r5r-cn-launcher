@@ -73,7 +73,7 @@ pub async fn start_offline_import(
                 }
                 OfflineSource::Zip(p) => {
                     let zp = PathBuf::from(p);
-                    let shape = detect_zip(&app_clone, &job_id_clone, &cancel, &zp)?;
+                    let shape = detect_zip(&app_clone, &job_id_clone, &cancel, &zp).await?;
                     import_zip(
                         &app_clone,
                         &job_id_clone,

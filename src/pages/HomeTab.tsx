@@ -211,15 +211,20 @@ export function HomeTab() {
       void reload();
       setJobPaused(false);
       setActiveJobPausable(false);
-      // Capture the id — the wizard auto-trigger can start a *new* job before
-      // this timer fires, and without this guard the stale timer would clear
-      // the newly-set activeJobId and make the progress panel flicker.
-      const justFinished = activeJobId;
-      window.setTimeout(() => {
-        setActiveJobId((cur) => (cur === justFinished ? null : cur));
-      }, 1500);
+      // Only auto-dismiss on success. On `failed` / `cancelled` we keep the
+      // panel pinned so the user can read the reason — otherwise the message
+      // flashes and the user has nothing to act on. A new job (or the 关闭
+      // button) will replace `activeJobId`.
+      if (progress.phase.phase === "complete") {
+        const justFinished = activeJobId;
+        window.setTimeout(() => {
+          setActiveJobId((cur) => (cur === justFinished ? null : cur));
+        }, 1500);
+      }
     }
   }, [progress, activeJobId, reload]);
+
+  const handleDismissProgress = () => setActiveJobId(null);
 
   // Helper: record a just-started job. `pausable` tells the UI whether the
   // 暂停 button should be offered — only `run_install` jobs honour it.
@@ -834,6 +839,7 @@ export function HomeTab() {
                   progress={displayProgress}
                   logs={installLogs}
                   onCancel={handleCancelImport}
+                  onDismiss={handleDismissProgress}
                   paused={jobPaused}
                 />
               ) : (
@@ -874,6 +880,7 @@ export function HomeTab() {
                   progress={displayProgress}
                   logs={installLogs}
                   onCancel={handleCancelImport}
+                  onDismiss={handleDismissProgress}
                   onTogglePause={
                     activeJobPausable ? handleTogglePause : undefined
                   }
@@ -966,6 +973,7 @@ export function HomeTab() {
                 progress={displayProgress}
                 logs={installLogs}
                 onCancel={handleCancelImport}
+                onDismiss={handleDismissProgress}
                 onTogglePause={
                   activeJobPausable ? handleTogglePause : undefined
                 }

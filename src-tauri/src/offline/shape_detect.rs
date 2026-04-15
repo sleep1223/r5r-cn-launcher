@@ -9,8 +9,10 @@
 //! Anything else is rejected with a clear error so the user can fix the pack.
 
 use crate::error::{AppError, AppResult};
+use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
 /// What we extracted from inspecting the pack.
@@ -88,18 +90,48 @@ pub fn zip_entry_keep(name: &str) -> bool {
 /// `R5R Launcher/` — all by reading the in-memory central directory. Does
 /// NOT call `by_index`, which seeks to every entry's local header and was
 /// the reason "准备中" hung for many seconds on 30 GB packs.
-pub fn detect_zip(
-    _app: &AppHandle,
-    _job_id: &str,
+///
+/// Runs the actual sync IO on a blocking worker so the tokio runtime keeps
+/// ticking even when the user picks a 20+ GB pack on a slow HDD. Emits a
+/// `Preparing` progress event up-front so the UI doesn't sit idle while the
+/// OS pages in the central directory.
+pub async fn detect_zip(
+    app: &AppHandle,
+    job_id: &str,
     cancel: &CancellationToken,
     zip_path: &Path,
 ) -> AppResult<DetectedZipShape> {
+    // Announce "准备中" now — on huge packs on HDD the CD read below can take
+    // seconds, and without this the progress card just shows the placeholder
+    // until the first real event arrives.
+    let _ = app.emit(
+        EVT_INSTALL_PROGRESS,
+        ProgressEvent::empty(job_id.into(), InstallPhase::Preparing),
+    );
+
+    let zp = zip_path.to_path_buf();
+    let cancel_clone = cancel.clone();
+    tokio::task::spawn_blocking(move || detect_zip_blocking(&cancel_clone, &zp))
+        .await
+        .map_err(|e| AppError::other(format!("zip 扫描任务中断: {}", e)))?
+}
+
+fn detect_zip_blocking(
+    cancel: &CancellationToken,
+    zip_path: &Path,
+) -> AppResult<DetectedZipShape> {
+    preflight_zip(zip_path)?;
+
+    if cancel.is_cancelled() {
+        return Err(AppError::Cancelled);
+    }
+
     // ZipArchive::new reads the EOCD + full central directory once. For a
     // 30 GB pack with ~50k entries the CD itself is only a few MB, so this is
     // a single linear read — seconds at worst on HDD, milliseconds on SSD.
     let f = std::fs::File::open(zip_path)?;
-    let archive = zip::ZipArchive::new(f)
-        .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
+    let size = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let archive = zip::ZipArchive::new(f).map_err(|e| friendly_zip_open_err(size, &e))?;
 
     if cancel.is_cancelled() {
         return Err(AppError::Cancelled);
@@ -150,6 +182,131 @@ pub fn detect_zip(
     })
 }
 
+/// Cheap pre-checks that run before we hand the file to zip-rs. The EOCD
+/// error zip-rs produces is opaque — a real 20 GB pack usually fails it
+/// for one of three reasons, all of which we can detect or hint at without
+/// actually parsing the zip: truncated download, a non-zip format renamed
+/// to .zip, or a split-volume archive. Each branch below maps to a single
+/// one of those with a concrete recovery action for the user.
+fn preflight_zip(zip_path: &Path) -> AppResult<()> {
+    let meta = std::fs::metadata(zip_path)?;
+    let size = meta.len();
+
+    // Minimum zip is a 22-byte EOCD record. Anything smaller is garbage.
+    if size < 22 {
+        return Err(AppError::InvalidPath(format!(
+            "文件过小（{} 字节），无法构成有效的 zip。请确认下载是否完整。",
+            size
+        )));
+    }
+
+    // Peek the first 4 bytes. A valid zip starts with PK\x03\x04 (local file
+    // header), PK\x05\x06 (empty archive EOCD), or PK\x07\x08 (spanned
+    // marker). Other magics mean the .zip extension is lying.
+    let mut f = std::fs::File::open(zip_path)?;
+    let mut magic = [0u8; 4];
+    let n = f.read(&mut magic)?;
+    if n >= 4 {
+        match magic {
+            [0x50, 0x4b, 0x03, 0x04]
+            | [0x50, 0x4b, 0x05, 0x06]
+            | [0x50, 0x4b, 0x07, 0x08] => {}
+            // 7z archive signature (37 7A BC AF 27 1C)
+            [0x37, 0x7a, 0xbc, 0xaf] => {
+                return Err(AppError::InvalidPath(
+                    "这实际上是 7z 压缩包（扩展名被改成了 .zip）。\
+                     请先用 7-Zip / Bandizip 解压为目录，再用【选择已解压的目录】导入。"
+                        .into(),
+                ));
+            }
+            // RAR archive signatures ("Rar!" for RAR4, same 4 bytes for RAR5)
+            [0x52, 0x61, 0x72, 0x21] => {
+                return Err(AppError::InvalidPath(
+                    "这实际上是 RAR 压缩包（扩展名被改成了 .zip）。\
+                     请先用 WinRAR / Bandizip 解压为目录，再用【选择已解压的目录】导入。"
+                        .into(),
+                ));
+            }
+            // MZ = Windows PE. Self-extracting exes sometimes wear .zip.
+            [0x4d, 0x5a, _, _] => {
+                return Err(AppError::InvalidPath(
+                    "这实际上是一个 Windows 可执行文件（例如自解压安装器），\
+                     不是 zip。请直接运行它解压，或向下载来源确认文件。"
+                        .into(),
+                ));
+            }
+            _ => {
+                return Err(AppError::InvalidPath(format!(
+                    "文件头不是 zip 签名（实际: {:02x} {:02x} {:02x} {:02x}）。\
+                     可能是下载被截断，或文件被改名。请重新下载或用 7-Zip 试解。",
+                    magic[0], magic[1], magic[2], magic[3]
+                )));
+            }
+        }
+    }
+
+    // Split-volume companions — zip-rs 2.x does not read multi-volume sets.
+    // Check for both naming conventions used by Windows archivers.
+    if let Some(parent) = zip_path.parent() {
+        let stem = zip_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        let filename = zip_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        // WinZip/Bandizip split: foo.zip + foo.z01 + foo.z02 ...
+        let z01 = parent.join(format!("{}.z01", stem));
+        if z01.exists() {
+            return Err(AppError::InvalidPath(format!(
+                "检测到分卷压缩包（存在 {}）。\
+                 本工具不支持分卷 zip —— 请先用 7-Zip / Bandizip 合并为单个 .zip，\
+                 或解压成目录后用【选择已解压的目录】导入。",
+                z01.file_name().unwrap().to_string_lossy()
+            )));
+        }
+
+        // 7-Zip split: foo.zip.001 + foo.zip.002 ...
+        let split_001 = parent.join(format!("{}.001", filename));
+        if split_001.exists() {
+            return Err(AppError::InvalidPath(format!(
+                "检测到分卷压缩包（存在 {}）。\
+                 本工具不支持分卷 zip —— 请先用 7-Zip / Bandizip 合并为单个 .zip，\
+                 或解压成目录后用【选择已解压的目录】导入。",
+                split_001.file_name().unwrap().to_string_lossy()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+/// Turn zip-rs's opaque "Could not find EOCD" / "invalid Zip archive" text
+/// into actionable Chinese guidance. Preflight already catches the common
+/// causes; this runs only when preflight passed but the central directory
+/// still fails to parse — usually truncation that happened in the middle of
+/// the file, or a zip with trailing garbage that pushes EOCD out of the
+/// default search window.
+fn friendly_zip_open_err(size: u64, e: &zip::result::ZipError) -> AppError {
+    let raw = e.to_string();
+    let gb = size as f64 / 1024.0 / 1024.0 / 1024.0;
+    if raw.contains("EOCD") || raw.contains("central directory") {
+        AppError::InvalidPath(format!(
+            "无法在 zip 末尾定位结构记录（EOCD）。文件大小：{:.2} GB。\n\
+             可能原因：\n  \
+               1. 下载未完成或被截断 —— 请对照镜像站的 SHA/MD5 校验后重新下载；\n  \
+               2. 是分卷压缩包（.z01 / .zip.001）—— 请先合并为单个 .zip；\n  \
+               3. 工具在尾部附加了非标准数据 —— 建议先解压为目录后用\
+                 【选择已解压的目录】导入。",
+            gb
+        ))
+    } else {
+        AppError::other(format!("无法打开 zip: {}", raw))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DetectedZipShape {
     /// Channel name inferred from `R5R Library/<channel>/r5apex.exe` — used
@@ -167,9 +324,10 @@ pub struct DetectedZipShape {
 /// `r5apex.exe` so the full `detect_zip` check would reject them — here we
 /// just count kept-prefix files without the anchor requirement.
 pub fn scan_zip_kept_entries(zip_path: &Path) -> AppResult<(u64, usize)> {
+    preflight_zip(zip_path)?;
     let f = std::fs::File::open(zip_path)?;
-    let archive = zip::ZipArchive::new(f)
-        .map_err(|e| AppError::other(format!("无法打开 zip: {}", e)))?;
+    let size = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let archive = zip::ZipArchive::new(f).map_err(|e| friendly_zip_open_err(size, &e))?;
     let file_count = archive
         .file_names()
         .filter(|n| !n.ends_with('/') && zip_entry_keep(n))
@@ -268,5 +426,76 @@ mod tests {
         std::fs::write(lib.join("STABLE").join("r5apex.exe"), b"x").unwrap();
         let r = detect_directory(&lib);
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn preflight_rejects_tiny_file() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("tiny.zip");
+        std::fs::write(&p, b"PK").unwrap();
+        let err = preflight_zip(&p).unwrap_err();
+        assert!(matches!(err, AppError::InvalidPath(_)), "got {:?}", err);
+        assert!(err.to_string().contains("过小"));
+    }
+
+    #[test]
+    fn preflight_rejects_7z_magic() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("fake.zip");
+        // 7z signature + enough padding to clear the 22-byte min
+        let mut buf = vec![0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c];
+        buf.extend(std::iter::repeat(0u8).take(64));
+        std::fs::write(&p, buf).unwrap();
+        let err = preflight_zip(&p).unwrap_err();
+        assert!(err.to_string().contains("7z"));
+    }
+
+    #[test]
+    fn preflight_rejects_rar_magic() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("fake.zip");
+        let mut buf = vec![0x52, 0x61, 0x72, 0x21, 0x1a, 0x07];
+        buf.extend(std::iter::repeat(0u8).take(64));
+        std::fs::write(&p, buf).unwrap();
+        let err = preflight_zip(&p).unwrap_err();
+        assert!(err.to_string().contains("RAR"));
+    }
+
+    #[test]
+    fn preflight_flags_z01_split_companion() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("pack.zip");
+        // Valid zip magic so we get past the signature gate.
+        let mut buf = vec![0x50, 0x4b, 0x03, 0x04];
+        buf.extend(std::iter::repeat(0u8).take(64));
+        std::fs::write(&p, buf).unwrap();
+        // Companion volume in the same directory — should trigger rejection.
+        std::fs::write(td.path().join("pack.z01"), b"x").unwrap();
+        let err = preflight_zip(&p).unwrap_err();
+        assert!(err.to_string().contains("分卷"), "got {}", err);
+    }
+
+    #[test]
+    fn preflight_flags_dot_001_split_companion() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("pack.zip");
+        let mut buf = vec![0x50, 0x4b, 0x03, 0x04];
+        buf.extend(std::iter::repeat(0u8).take(64));
+        std::fs::write(&p, buf).unwrap();
+        std::fs::write(td.path().join("pack.zip.001"), b"x").unwrap();
+        let err = preflight_zip(&p).unwrap_err();
+        assert!(err.to_string().contains("分卷"), "got {}", err);
+    }
+
+    #[test]
+    fn preflight_passes_for_real_zip_signature() {
+        let td = tempdir().unwrap();
+        let p = td.path().join("ok.zip");
+        let mut buf = vec![0x50, 0x4b, 0x03, 0x04];
+        buf.extend(std::iter::repeat(0u8).take(64));
+        std::fs::write(&p, buf).unwrap();
+        // No companions and valid magic — preflight should accept (actual
+        // zip-rs parse will fail later, but that's not preflight's job).
+        assert!(preflight_zip(&p).is_ok());
     }
 }
