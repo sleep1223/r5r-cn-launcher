@@ -28,8 +28,11 @@ pub struct LauncherSettings {
     #[serde(default)]
     pub proxy_mode: ProxyMode,
 
-    /// Mirror CDN domain (e.g. `cdn-r5r-org.sleep0.de`). URLs are built as
-    /// `https://{mirror_domain}/launcher/{channel}/checksums.json`.
+    /// Low-traffic metadata domain (e.g. `cdn-r5r-org.sleep0.de`). Used for
+    /// `checksums.json`, `version.txt`, and the connectivity probe — URLs are
+    /// `https://{mirror_domain}/launcher/{channel}/...`. Actual game files are
+    /// served from `dashboard.download_domain` instead; this domain is only
+    /// the fallback when the dashboard is unreachable or doesn't supply one.
     #[serde(default = "default_mirror_domain", alias = "root_config_url")]
     pub mirror_domain: String,
 

@@ -47,6 +47,7 @@ export interface DashboardRule {
 
 export interface DashboardConfig {
   offline_package_url: string;
+  download_domain: string;
   docs_url: string;
   launcher_version: string;
   launcher_update_url: string;

@@ -1,10 +1,12 @@
 //! Community dashboard API — fetches launcher metadata, announcements, rules,
-//! and patch info from the CN community endpoint at
-//! `https://r5.sleep0.de/api/v1/r5/launcher/config`.
+//! patch info, and the **game-file download domain** from the CN community
+//! endpoint at `https://r5.sleep0.de/api/v1/r5/launcher/config`.
 //!
 //! This is a separate channel from the official R5R `RemoteConfig` (which is
-//! the wire-compatible mirror config). The dashboard surface only powers the
-//! Home tab UI — it does not drive any download behavior.
+//! the wire-compatible mirror config). Beyond powering the Home tab UI, the
+//! `download_domain` field here is what actually serves game files — the saved
+//! `mirror_domain` in settings is reserved for low-traffic metadata
+//! (`checksums.json`, `version.txt`, connectivity probe).
 
 use crate::error::{AppError, AppResult};
 use reqwest::Client;
@@ -16,6 +18,10 @@ pub const DEFAULT_DASHBOARD_API_URL: &str = "https://r5.sleep0.de/api/v1/r5/laun
 pub struct DashboardConfig {
     #[serde(default)]
     pub offline_package_url: String,
+    /// CDN domain that serves game files (chunked downloads + full files).
+    /// Empty means "fall back to the saved `mirror_domain`".
+    #[serde(default)]
+    pub download_domain: String,
     #[serde(default)]
     pub docs_url: String,
     #[serde(default)]

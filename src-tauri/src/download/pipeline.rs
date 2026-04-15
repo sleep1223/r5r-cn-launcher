@@ -1,4 +1,5 @@
 use crate::config::{Channel, UpdateStrategy};
+use crate::dashboard::fetch_dashboard_config;
 use crate::download::chunk::download_chunked;
 use crate::download::patch::{apply_patch, PatchOutcome};
 use crate::download::progress::ProgressAggregator;
@@ -78,11 +79,20 @@ pub async fn run_install(
     emit(InstallPhase::Preparing);
     emit_log(&app, &job_id, LogLevel::Info, format!("开始安装频道 {}", channel_name));
 
-    // 1. Resolve channel from mirror domain.
-    let (mirror_domain, library_root, languages_wanted, concurrent_downloads, update_strategy) = {
+    // 1. Resolve the metadata channel from the saved mirror domain. This is
+    //    the low-traffic surface (`checksums.json` + `version.txt`).
+    let (
+        mirror_domain,
+        dashboard_url,
+        library_root,
+        languages_wanted,
+        concurrent_downloads,
+        update_strategy,
+    ) = {
         let s = state.settings.read();
         (
             s.mirror_domain.clone(),
+            s.dashboard_api_url.clone(),
             s.library_root.clone(),
             vec!["schinese".to_string()],
             s.concurrent_downloads.max(1),
@@ -101,7 +111,7 @@ pub async fn run_install(
         &app,
         &job_id,
         LogLevel::Info,
-        format!("频道 {} (game_url={})", channel.name, channel.game_url),
+        format!("频道 {} (元数据 game_url={})", channel.name, channel.game_url),
     );
 
     let client: Client = state.http.read().await.client();
@@ -376,6 +386,21 @@ pub async fn run_install(
     }
 
     // 6. Execute downloads.
+    //
+    // Resolve the high-traffic download channel from the dashboard's
+    // `download_domain`. Falls back to the mirror domain if the dashboard is
+    // unreachable or doesn't return one — keeps installs working when the
+    // community endpoint is degraded.
+    let download_channel = resolve_download_channel(
+        &app,
+        &job_id,
+        &client,
+        &dashboard_url,
+        &channel,
+        &channel_name,
+    )
+    .await;
+
     let total_bytes: u64 = plan.iter().map(|e| e.size).sum();
     let agg = ProgressAggregator::new(job_id.clone(), plan.len(), total_bytes);
     let emitter_handle =
@@ -415,7 +440,7 @@ pub async fn run_install(
             .await
             .map_err(|e| AppError::other(e.to_string()))?;
         let client = client.clone();
-        let channel = channel.clone();
+        let download_channel = download_channel.clone();
         let install_dir = install_dir.clone();
         let agg = agg.clone();
         let cancel = cancel.clone();
@@ -425,7 +450,7 @@ pub async fn run_install(
             if entry.parts.is_empty() {
                 download_single(
                     &client,
-                    &channel,
+                    &download_channel,
                     &entry,
                     &install_dir,
                     &agg,
@@ -437,7 +462,7 @@ pub async fn run_install(
             } else {
                 download_chunked(
                     &client,
-                    &channel,
+                    &download_channel,
                     &entry,
                     &install_dir,
                     &agg,
@@ -536,4 +561,60 @@ pub async fn run_install(
     emit_log(&app, &job_id, LogLevel::Info, "安装完成 ✓");
     emit(InstallPhase::Complete);
     Ok(())
+}
+
+/// Pick the `Channel` whose `game_url` will be hit for actual file bytes.
+/// Prefers `dashboard.download_domain`; degrades to the metadata `mirror`
+/// channel if the dashboard endpoint is missing, unreachable, or returns an
+/// empty `download_domain`. Failure here is non-fatal — installs must keep
+/// working when the community endpoint is degraded.
+async fn resolve_download_channel(
+    app: &AppHandle,
+    job_id: &str,
+    client: &Client,
+    dashboard_url: &str,
+    mirror: &Channel,
+    channel_name: &str,
+) -> Channel {
+    if dashboard_url.is_empty() {
+        emit_log(
+            app,
+            job_id,
+            LogLevel::Warn,
+            "未配置数据面板地址，下载将复用镜像源域名",
+        );
+        return mirror.clone();
+    }
+    match fetch_dashboard_config(client, dashboard_url).await {
+        Ok(dc) => {
+            let dd = dc.download_domain.trim();
+            if dd.is_empty() {
+                emit_log(
+                    app,
+                    job_id,
+                    LogLevel::Warn,
+                    "数据面板未返回 download_domain，下载将复用镜像源域名",
+                );
+                mirror.clone()
+            } else {
+                let ch = Channel::from_domain(dd, channel_name);
+                emit_log(
+                    app,
+                    job_id,
+                    LogLevel::Info,
+                    format!("下载源 (download_domain={})", ch.game_url),
+                );
+                ch
+            }
+        }
+        Err(e) => {
+            emit_log(
+                app,
+                job_id,
+                LogLevel::Warn,
+                format!("拉取数据面板失败 ({})，下载将复用镜像源域名", e),
+            );
+            mirror.clone()
+        }
+    }
 }
