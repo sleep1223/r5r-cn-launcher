@@ -25,6 +25,7 @@ import {
   DetectedInstall,
   DiskSuggestion,
   LaunchOptionSelection,
+  ProgressEvent,
 } from "../ipc/types";
 import { getServers, ServerListItem } from "../api";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -410,7 +411,26 @@ export function HomeTab() {
     }
   };
 
-  const showingProgress = activeJobId && progress?.job_id === activeJobId;
+  // Show the progress panel as soon as a job starts, even before the first
+  // progress event matching it arrives. Without this there's a visible gap
+  // after dialog close where nothing appears to happen (especially on
+  // Windows when the zip crate is scanning the central directory), which
+  // looks to the user like the buttons did nothing.
+  const showingProgress = !!activeJobId;
+  const matchedProgress: ProgressEvent | null =
+    progress && progress.job_id === activeJobId ? progress : null;
+  const placeholderProgress: ProgressEvent = {
+    job_id: activeJobId ?? "",
+    phase: { phase: "preparing" },
+    file_index: 0,
+    file_count: 0,
+    bytes_done: 0,
+    bytes_total: 0,
+    current_file: "",
+    speed_bps: 0,
+    eta_seconds: 0,
+  };
+  const displayProgress = matchedProgress ?? placeholderProgress;
 
   const actionLabel = (a: Action): string => {
     switch (a) {
@@ -797,7 +817,7 @@ export function HomeTab() {
               </div>
               {showingProgress ? (
                 <InstallProgress
-                  progress={progress!}
+                  progress={displayProgress}
                   logs={installLogs}
                   onCancel={handleCancelImport}
                   paused={jobPaused}
@@ -837,7 +857,7 @@ export function HomeTab() {
               </div>
               {showingProgress ? (
                 <InstallProgress
-                  progress={progress!}
+                  progress={displayProgress}
                   logs={installLogs}
                   onCancel={handleCancelImport}
                   onTogglePause={
@@ -928,7 +948,7 @@ export function HomeTab() {
           {showingProgress ? (
             <div className="mt-4">
               <InstallProgress
-                progress={progress!}
+                progress={displayProgress}
                 logs={installLogs}
                 onCancel={handleCancelImport}
                 onTogglePause={

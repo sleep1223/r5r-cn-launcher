@@ -56,6 +56,15 @@ pub async fn start_offline_import(
     let settings_arc = state.settings.clone();
     let config_dir = state.config_dir.read().clone();
 
+    // Emit Preparing *before* the spawn so the UI gets immediate feedback,
+    // even if the sync detect_zip / WalkDir on a huge pack takes a few
+    // seconds. Without this the user saw the dialog close with no visible
+    // change — which read as "button did nothing".
+    let _ = app.emit(
+        EVT_INSTALL_PROGRESS,
+        ProgressEvent::empty(job_id.clone(), InstallPhase::Preparing),
+    );
+
     tauri::async_runtime::spawn(async move {
         let result: AppResult<String> = async {
             match source {
