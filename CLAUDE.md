@@ -26,15 +26,18 @@ No linter/formatter is configured.
 
 ## Releasing
 
-**Never bump the version proactively.** Only touch version numbers when the user explicitly asks (e.g. "递增版本", "bump to 0.18.0", "打 tag"). Do not sneak version bumps into unrelated commits.
+**Never bump the version proactively.** Version bumps fire **only** when the user explicitly says "递增版本" (or an equivalent like "bump to 0.18.0" / "打 tag"). Each such instruction authorizes **exactly one** bump — after it lands, authorization is spent. The next bump requires a brand-new explicit "递增版本" from the user; do not chain, batch, or pre-emptively bump again in the same session without another explicit trigger. Do not sneak version bumps into unrelated commits.
 
-When the user does ask, version bumps must land in **four places in one commit**: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (run `cargo update -p launcher-app --manifest-path src-tauri/Cargo.toml`). After pushing the commit, **always** create and push a matching `vX.Y.Z` tag — a GitHub Action is wired to the tag push and won't fire otherwise:
+When the user does ask, perform the bump once and stop:
 
-```
-git tag vX.Y.Z && git push origin vX.Y.Z
-```
+1. Update the version in **four places in one commit**: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` (run `cargo update -p launcher-app --manifest-path src-tauri/Cargo.toml`).
+2. Push the commit, then create and push the matching `vX.Y.Z` tag to the remote — a GitHub Action is wired to the tag push and won't fire otherwise:
 
-Never push a version commit without its tag.
+   ```
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   ```
+
+Never push a version commit without its tag. After the tag is pushed, the bump is complete — wait for the next explicit "递增版本" before touching version numbers again.
 
 ## Architecture
 
