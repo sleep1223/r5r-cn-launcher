@@ -9,11 +9,8 @@
 //! Anything else is rejected with a clear error so the user can fix the pack.
 
 use crate::error::{AppError, AppResult};
-use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter};
-use tokio_util::sync::CancellationToken;
 
 /// What we extracted from inspecting the pack.
 #[derive(Debug, Clone)]
@@ -85,110 +82,13 @@ pub fn zip_entry_keep(name: &str) -> bool {
         .any(|p| name.len() >= p.len() && name[..p.len()].eq_ignore_ascii_case(p))
 }
 
-/// Inspect a zip file and figure out the channel, total uncompressed bytes,
-/// and file count for the subset of entries under `R5R Library/` and
-/// `R5R Launcher/` — all by reading the in-memory central directory. Does
-/// NOT call `by_index`, which seeks to every entry's local header and was
-/// the reason "准备中" hung for many seconds on 30 GB packs.
-///
-/// Runs the actual sync IO on a blocking worker so the tokio runtime keeps
-/// ticking even when the user picks a 20+ GB pack on a slow HDD. Emits a
-/// `Preparing` progress event up-front so the UI doesn't sit idle while the
-/// OS pages in the central directory.
-pub async fn detect_zip(
-    app: &AppHandle,
-    job_id: &str,
-    cancel: &CancellationToken,
-    zip_path: &Path,
-) -> AppResult<DetectedZipShape> {
-    // Announce "准备中" now — on huge packs on HDD the CD read below can take
-    // seconds, and without this the progress card just shows the placeholder
-    // until the first real event arrives.
-    let _ = app.emit(
-        EVT_INSTALL_PROGRESS,
-        ProgressEvent::empty(job_id.into(), InstallPhase::Preparing),
-    );
-
-    let zp = zip_path.to_path_buf();
-    let cancel_clone = cancel.clone();
-    tokio::task::spawn_blocking(move || detect_zip_blocking(&cancel_clone, &zp))
-        .await
-        .map_err(|e| AppError::other(format!("zip 扫描任务中断: {}", e)))?
-}
-
-fn detect_zip_blocking(
-    cancel: &CancellationToken,
-    zip_path: &Path,
-) -> AppResult<DetectedZipShape> {
-    preflight_zip(zip_path)?;
-
-    if cancel.is_cancelled() {
-        return Err(AppError::Cancelled);
-    }
-
-    // ZipArchive::new reads the EOCD + full central directory once. For a
-    // 30 GB pack with ~50k entries the CD itself is only a few MB, so this is
-    // a single linear read — seconds at worst on HDD, milliseconds on SSD.
-    let f = std::fs::File::open(zip_path)?;
-    let size = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let archive = zip::ZipArchive::new(f).map_err(|e| friendly_zip_open_err(size, &e))?;
-
-    if cancel.is_cancelled() {
-        return Err(AppError::Cancelled);
-    }
-
-    // Pure in-memory scans from here down. Find a `R5R Library/<channel>/r5apex.exe`
-    // to nail down the channel name for settings updates.
-    let anchor = archive
-        .file_names()
-        .find(|n| {
-            let l = n.to_ascii_lowercase();
-            l.starts_with("r5r library/") && l.ends_with("/r5apex.exe")
-        })
-        .ok_or_else(|| {
-            AppError::InvalidPath(
-                "zip 包中未找到 R5R Library/<频道>/r5apex.exe，请确认这是一个有效的 R5R 离线包。"
-                    .into(),
-            )
-        })?
-        .to_string();
-
-    let parts: Vec<&str> = anchor.split('/').collect();
-    if parts.len() < 3 {
-        return Err(AppError::InvalidPath(format!(
-            "zip 内的 r5apex.exe 路径无效: {}",
-            anchor
-        )));
-    }
-    let channel = parts[parts.len() - 2].to_string();
-
-    // File count across kept prefixes — `file_names()` is purely in-memory.
-    let file_count = archive
-        .file_names()
-        .filter(|n| !n.ends_with('/') && zip_entry_keep(n))
-        .count();
-
-    // Total bytes: archive-level sum from the central directory. When most of
-    // the zip is game content (the typical case), the over-count from any
-    // top-level README-style extras is negligible — and on data-descriptor
-    // zips this returns None, in which case the UI falls back to file-count
-    // progress.
-    let total_bytes = archive.decompressed_size().map(|v| v as u64).unwrap_or(0);
-
-    Ok(DetectedZipShape {
-        channel,
-        total_bytes,
-        file_count,
-    })
-}
-
 /// Cheap pre-checks that run before we hand the file to zip-rs. The EOCD
 /// error zip-rs produces is opaque — a real 20 GB pack usually fails it
 /// for one of three reasons, all of which we can detect or hint at without
 /// actually parsing the zip: truncated download, a non-zip format renamed
 /// to .zip, or a split-volume archive. Each branch below maps to a single
 /// one of those with a concrete recovery action for the user.
-fn preflight_zip(zip_path: &Path) -> AppResult<()> {
+pub fn preflight_zip(zip_path: &Path) -> AppResult<()> {
     let meta = std::fs::metadata(zip_path)?;
     let size = meta.len();
 
@@ -307,21 +207,8 @@ fn friendly_zip_open_err(size: u64, e: &zip::result::ZipError) -> AppError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DetectedZipShape {
-    /// Channel name inferred from `R5R Library/<channel>/r5apex.exe` — used
-    /// to update `selected_channel` in settings after import.
-    pub channel: String,
-    /// Total uncompressed bytes across kept entries (best-effort; may be 0
-    /// for data-descriptor zips, in which case the UI falls back to
-    /// file-count-based progress).
-    pub total_bytes: u64,
-    /// Number of regular-file entries under `R5R Library/` or `R5R Launcher/`.
-    pub file_count: usize,
-}
-
 /// Lightweight zip scan for the patch path. Patches may not ship a full
-/// `r5apex.exe` so the full `detect_zip` check would reject them — here we
+/// `r5apex.exe` so the full detection check would reject them — here we
 /// just count kept-prefix files without the anchor requirement.
 pub fn scan_zip_kept_entries(zip_path: &Path) -> AppResult<(u64, usize)> {
     preflight_zip(zip_path)?;

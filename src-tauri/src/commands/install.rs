@@ -6,8 +6,8 @@ use crate::events::{
     new_job_id, InstallJobId, InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS,
 };
 use crate::offline::dir_import::import_directory;
-use crate::offline::shape_detect::{detect_directory, detect_zip};
-use crate::offline::zip_import::import_zip;
+use crate::offline::shape_detect::detect_directory;
+use crate::offline::zip_import::import_zip_streaming;
 use crate::offline::OfflineSource;
 use crate::state::{JobHandle, LauncherState, PauseState};
 use serde::Serialize;
@@ -73,17 +73,19 @@ pub async fn start_offline_import(
                 }
                 OfflineSource::Zip(p) => {
                     let zp = PathBuf::from(p);
-                    let shape = detect_zip(&app_clone, &job_id_clone, &cancel, &zp).await?;
-                    import_zip(
+                    // Streaming path: skip central-directory detection and
+                    // read local headers sequentially. Tolerates packs with
+                    // missing/unreadable EOCD (truncated downloads, trailing
+                    // junk) that fail the strict detect_zip preflight.
+                    let channel = import_zip_streaming(
                         &app_clone,
                         &job_id_clone,
                         &zp,
-                        &shape,
                         &install_root,
                         cancel.clone(),
                     )
                     .await?;
-                    Ok(shape.channel)
+                    Ok(channel)
                 }
             }
         }

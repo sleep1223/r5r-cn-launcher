@@ -74,6 +74,10 @@ export function InstallProgress({
   const hasFiles = progress.file_count > 0;
   const hasSpeed = !isFinal && progress.speed_bps > 0;
   const hasEta = !isFinal && progress.eta_seconds > 0 && hasBytes;
+  // Streaming zip import doesn't know totals up-front but still pushes a
+  // running bytes/file counter — show those as "已处理" even without a total.
+  const runningBytes = progress.bytes_done > 0;
+  const runningFiles = progress.file_index > 0;
 
   return (
     <div className="space-y-3">
@@ -115,9 +119,9 @@ export function InstallProgress({
         <Stat
           label="已处理"
           value={
-            hasBytes
+            hasBytes || runningBytes
               ? formatBytes(progress.bytes_done)
-              : hasFiles
+              : hasFiles || runningFiles
                 ? `${progress.file_index.toLocaleString()} 个`
                 : "—"
           }
@@ -129,7 +133,7 @@ export function InstallProgress({
               ? formatBytes(progress.bytes_total)
               : hasFiles
                 ? `${progress.file_count.toLocaleString()} 个`
-                : "—"
+                : "未知"
           }
         />
         <Stat
