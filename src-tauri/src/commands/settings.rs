@@ -64,7 +64,7 @@ pub fn validate_install_path(path: String) -> AppResult<PathValidation> {
         let p = std::path::PathBuf::from(&path);
         if p.exists() {
             dunce::canonicalize(&p)
-                .map(|p| p.display().to_string())
+                .map(crate::util::display_slash)
                 .unwrap_or_else(|_| path.clone())
         } else {
             path.clone()
@@ -140,7 +140,7 @@ pub fn suggest_install_path() -> Vec<DiskSuggestion> {
     for disk in disks.list() {
         let mount = disk.mount_point();
         let free = disk.available_space();
-        let path_str = mount.display().to_string();
+        let path_str = crate::util::display_slash(mount);
         // Skip pseudo-filesystems (Linux /boot, /snap, etc.)
         if cfg!(target_os = "linux")
             && !mount.starts_with("/home")

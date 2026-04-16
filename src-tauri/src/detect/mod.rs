@@ -89,7 +89,7 @@ fn expand_into_channels(hits: Vec<DetectedInstall>) -> Vec<DetectedInstall> {
                     .map(|n| n.to_string_lossy().into_owned());
                 out.push(DetectedInstall {
                     source: hit.source.clone(),
-                    path: channel_dir.display().to_string(),
+                    path: crate::util::display_slash(&channel_dir),
                     channel,
                     version: hit.version.clone(),
                     has_game: true,

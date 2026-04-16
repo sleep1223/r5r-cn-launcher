@@ -14,7 +14,7 @@ pub async fn launch_game(
     if !exe.exists() {
         return Err(AppError::NotFound(format!(
             "未在安装目录找到 r5apex.exe: {}",
-            install_dir.display()
+            crate::util::display_slash(install_dir)
         )));
     }
 

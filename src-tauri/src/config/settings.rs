@@ -68,6 +68,13 @@ pub struct LauncherSettings {
     /// `Verify` because patches aren't wired through the pipeline yet.
     #[serde(default)]
     pub update_strategy: UpdateStrategy,
+
+    /// Whether to download the optional HD texture packs (`*.opt.starpak`,
+    /// manifest entries with `optional: true`). Off by default to match the
+    /// official launcher, which only touches HD textures when the user has
+    /// already installed them.
+    #[serde(default)]
+    pub download_hd_textures: bool,
 }
 
 impl Default for LauncherSettings {
@@ -84,6 +91,7 @@ impl Default for LauncherSettings {
             last_known_official_install_path: None,
             dashboard_api_url: default_dashboard_api_url(),
             update_strategy: UpdateStrategy::default(),
+            download_hd_textures: false,
         }
     }
 }

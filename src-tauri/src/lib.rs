@@ -13,6 +13,7 @@ pub mod process;
 pub mod proxy;
 pub mod state;
 pub mod updater;
+pub mod util;
 pub mod verify;
 
 use crate::config::LauncherSettings;

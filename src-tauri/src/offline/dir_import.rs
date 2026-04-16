@@ -145,7 +145,7 @@ pub async fn import_directory(
                 bytes_total: total_bytes,
                 current_file: dst
                     .strip_prefix(install_root)
-                    .map(|p| p.display().to_string())
+                    .map(crate::util::display_slash)
                     .unwrap_or_default(),
                 speed_bps: 0,
                 eta_seconds: 0,

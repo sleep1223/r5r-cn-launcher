@@ -26,7 +26,7 @@ pub fn detect_directory(picked: &Path) -> AppResult<DetectedShape> {
     if !picked.is_dir() {
         return Err(AppError::InvalidPath(format!(
             "{} 不是一个目录",
-            picked.display()
+            crate::util::display_slash(picked)
         )));
     }
 

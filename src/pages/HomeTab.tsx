@@ -276,7 +276,9 @@ export function HomeTab() {
     return "play";
   }, [settings, detected, launchableDetected, installed, updateAvailable]);
 
-  const launchableDir = launchableDetected?.path ?? null;
+  const launchableDir = launchableDetected?.path
+    ? launchableDetected.path.replace(/\\/g, "/")
+    : null;
 
   const handlePrimaryAction = async () => {
     if (!settings) return;

@@ -111,7 +111,7 @@ pub async fn auto_adopt_existing_install(
     // Write into our settings.
     {
         let mut s = state.settings.write();
-        s.library_root = library_root.display().to_string();
+        s.library_root = crate::util::display_slash(&library_root);
         if s.selected_channel.is_empty() {
             s.selected_channel = channel_name.clone();
         }
@@ -124,13 +124,13 @@ pub async fn auto_adopt_existing_install(
         target: "detect",
         "auto-adopted R5Reloaded install: channel={}, dir={}",
         channel_name,
-        channel_dir.display()
+        crate::util::display_slash(&channel_dir)
     );
 
     Ok(AdoptResult {
         adopted: true,
-        channel_dir: Some(channel_dir.display().to_string()),
-        library_root: Some(library_root.display().to_string()),
+        channel_dir: Some(crate::util::display_slash(&channel_dir)),
+        library_root: Some(crate::util::display_slash(&library_root)),
     })
 }
 

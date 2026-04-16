@@ -96,7 +96,7 @@ pub async fn start_offline_import(
             Ok(channel) => {
                 {
                     let mut s = settings_arc.write();
-                    s.library_root = install_root.display().to_string();
+                    s.library_root = crate::util::display_slash(&install_root);
                     // Always point at the freshly-imported channel — the
                     // auto-select effect elsewhere may have set this to a
                     // different canonical value ("live_game") before the

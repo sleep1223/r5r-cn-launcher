@@ -32,7 +32,7 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
     // The shortcut's working directory points at the launcher subfolder
     // (`...\R5Reloaded\R5R Launcher`), but users expect the actual game root.
     // Strip the trailing `R5R Launcher` segment if present.
-    let path = strip_launcher_suffix(&raw_path);
+    let path = crate::util::normalize_slashes(&strip_launcher_suffix(&raw_path));
 
     Ok(vec![DetectedInstall {
         source: DetectSource::Shortcut,

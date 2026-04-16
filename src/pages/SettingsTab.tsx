@@ -56,6 +56,7 @@ export function SettingsTab() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [mirrorDomain, setMirrorDomain] = useState("");
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
+  const [downloadHdTextures, setDownloadHdTextures] = useState(false);
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
   // library_root, or `__custom__` to enable the manual text input.
@@ -83,6 +84,7 @@ export function SettingsTab() {
     );
     setMirrorDomain(settings.mirror_domain);
     setUpdateStrategy(settings.update_strategy);
+    setDownloadHdTextures(settings.download_hd_textures);
     setLibraryRoot(settings.library_root.replace(/\\/g, "/"));
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
@@ -231,13 +233,16 @@ export function SettingsTab() {
     const libraryRootChanged = libraryRoot !== settings.library_root;
     const concurrencyChanged = concurrency !== settings.concurrent_downloads;
     const updateStrategyChanged = updateStrategy !== settings.update_strategy;
+    const hdTexturesChanged =
+      downloadHdTextures !== settings.download_hd_textures;
 
     if (
       !proxyChanged &&
       !domainChanged &&
       !libraryRootChanged &&
       !concurrencyChanged &&
-      !updateStrategyChanged
+      !updateStrategyChanged &&
+      !hdTexturesChanged
     ) {
       return;
     }
@@ -255,6 +260,7 @@ export function SettingsTab() {
           library_root: libraryRoot,
           concurrent_downloads: concurrency,
           update_strategy: updateStrategy,
+          download_hd_textures: downloadHdTextures,
         });
         setSavedAt(Date.now());
       } catch (e) {
@@ -271,6 +277,7 @@ export function SettingsTab() {
     proxyUrl,
     mirrorDomain,
     updateStrategy,
+    downloadHdTextures,
     libraryRoot,
     concurrency,
     pathErrors.length,
@@ -401,6 +408,24 @@ export function SettingsTab() {
             注：补丁包仅支持单跳（本地版本 → 远端版本），未找到匹配路径时会自动回退到完整校验。
           </div>
         )}
+      </GlassCard>
+
+      {/* HD 纹理 */}
+      <GlassCard>
+        <SectionHeader
+          icon="🖼️"
+          title="HD 高清纹理"
+          subtitle="可选的 *.opt.starpak 纹理包，体积较大。关闭时安装/校验会跳过，与官方启动器一致。"
+        />
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={downloadHdTextures}
+            onChange={(e) => setDownloadHdTextures(e.target.checked)}
+            className="h-4 w-4 accent-blue-400"
+          />
+          <span className="text-sm text-white/80">下载 HD 高清纹理</span>
+        </label>
       </GlassCard>
 
       {/* 安装位置 */}

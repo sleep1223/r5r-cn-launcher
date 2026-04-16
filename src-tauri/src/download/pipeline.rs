@@ -88,6 +88,7 @@ pub async fn run_install(
         languages_wanted,
         concurrent_downloads,
         update_strategy,
+        download_hd_textures,
     ) = {
         let s = state.settings.read();
         (
@@ -97,6 +98,7 @@ pub async fn run_install(
             vec!["schinese".to_string()],
             s.concurrent_downloads.max(1),
             s.update_strategy,
+            s.download_hd_textures,
         )
     };
     if mirror_domain.is_empty() {
@@ -125,7 +127,7 @@ pub async fn run_install(
         &app,
         &job_id,
         LogLevel::Info,
-        format!("安装目录: {}", install_dir.display()),
+        format!("安装目录: {}", crate::util::display_slash(&install_dir)),
     );
 
     // 3. Fetch manifest (version comes from checksums.json's game_version).
@@ -231,12 +233,26 @@ pub async fn run_install(
     emit(InstallPhase::Scanning);
     emit_log(&app, &job_id, LogLevel::Info, "校验已下载文件中 …");
 
+    // Mirror the official launcher's tri-split manifest handling
+    // (`ApiService.GetGameManifestAsync(optional)` + `GetLanguageFilesAsync`):
+    //   - core    : non-optional, empty language
+    //   - language: non-empty language — keep only the ones the user wants
+    //   - optional: the `*.opt.starpak` HD texture pack, gated behind the
+    //     user's `download_hd_textures` setting
     let lang_refs: Vec<&str> = languages_wanted.iter().map(|s| s.as_str()).collect();
     let candidates: Vec<ManifestEntry> = manifest
         .files
         .iter()
         .filter(|entry| !is_user_generated(&entry.path))
-        .filter(|entry| !entry.optional || is_language_match(entry, &lang_refs))
+        .filter(|entry| {
+            if entry.optional {
+                download_hd_textures && entry.language.is_empty()
+            } else if entry.language.is_empty() {
+                true
+            } else {
+                is_language_match(entry, &lang_refs)
+            }
+        })
         .cloned()
         .collect();
 

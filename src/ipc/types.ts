@@ -25,6 +25,7 @@ export interface LauncherSettings {
   launch_option_selection: unknown;
   last_known_official_install_path: string | null;
   update_strategy: UpdateStrategy;
+  download_hd_textures: boolean;
 }
 
 // ===== Community dashboard =====

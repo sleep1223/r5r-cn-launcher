@@ -117,7 +117,7 @@ pub async fn download_single(
 ) -> AppResult<()> {
     let url = entry_url(channel, &entry.path);
     let dest = entry_local_path(install_dir, &entry.path);
-    agg.set_current_file(&entry.path);
+    agg.set_current_file(&crate::util::normalize_slashes(&entry.path));
     retry
         .run(|_| {
             let url = url.clone();

@@ -36,7 +36,7 @@ pub async fn download_chunked(
         .map_err(|e| AppError::other(format!("tempdir: {}", e)))?;
     let tmp_root = tmpdir.path().to_path_buf();
 
-    agg.set_current_file(&entry.path);
+    agg.set_current_file(&crate::util::normalize_slashes(&entry.path));
 
     // ===== Parallel chunk download =====
     let chunk_sem = Arc::new(Semaphore::new(MAX_PARTS_PER_FILE));

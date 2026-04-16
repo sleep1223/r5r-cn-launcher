@@ -43,7 +43,7 @@ pub fn detect(extra_roots: &[String]) -> Vec<DetectedInstall> {
                     .map(|n| n.to_string_lossy().to_string());
                 out.push(DetectedInstall {
                     source: DetectSource::LibraryScan,
-                    path: path.display().to_string(),
+                    path: crate::util::display_slash(&path),
                     channel,
                     version: None,
                     has_game: true,

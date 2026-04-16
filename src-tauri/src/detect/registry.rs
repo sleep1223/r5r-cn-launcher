@@ -40,7 +40,7 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
 
             found.push(DetectedInstall {
                 source: DetectSource::Registry,
-                path,
+                path: crate::util::normalize_slashes(&path),
                 channel: None,
                 version: if display_version.is_empty() {
                     None
@@ -60,6 +60,6 @@ fn derive_dir_from_icon(icon: &str) -> String {
     let no_index = icon.rsplit_once(',').map(|(p, _)| p).unwrap_or(icon);
     std::path::Path::new(no_index)
         .parent()
-        .map(|p| p.display().to_string())
+        .map(crate::util::display_slash)
         .unwrap_or_else(|| no_index.to_string())
 }
