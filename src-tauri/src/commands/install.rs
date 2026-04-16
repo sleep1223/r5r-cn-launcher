@@ -7,7 +7,7 @@ use crate::events::{
 };
 use crate::offline::dir_import::import_directory;
 use crate::offline::shape_detect::detect_directory;
-use crate::offline::zip_import::import_zip_streaming;
+use crate::offline::zip_import::import_zip_strict;
 use crate::offline::OfflineSource;
 use crate::state::{JobHandle, LauncherState, PauseState};
 use serde::Serialize;
@@ -73,11 +73,12 @@ pub async fn start_offline_import(
                 }
                 OfflineSource::Zip(p) => {
                     let zp = PathBuf::from(p);
-                    // Streaming path: skip central-directory detection and
-                    // read local headers sequentially. Tolerates packs with
-                    // missing/unreadable EOCD (truncated downloads, trailing
-                    // junk) that fail the strict detect_zip preflight.
-                    let channel = import_zip_streaming(
+                    // Strict path: require a readable EOCD / central
+                    // directory. Truncated or malformed packs surface the
+                    // friendly three-reason error up-front, so users know
+                    // to re-download or merge split volumes instead of
+                    // ending up with a half-written library.
+                    let channel = import_zip_strict(
                         &app_clone,
                         &job_id_clone,
                         &zp,

@@ -189,7 +189,7 @@ pub fn preflight_zip(zip_path: &Path) -> AppResult<()> {
 /// still fails to parse — usually truncation that happened in the middle of
 /// the file, or a zip with trailing garbage that pushes EOCD out of the
 /// default search window.
-fn friendly_zip_open_err(size: u64, e: &zip::result::ZipError) -> AppError {
+pub(crate) fn friendly_zip_open_err(size: u64, e: &zip::result::ZipError) -> AppError {
     let raw = e.to_string();
     let gb = size as f64 / 1024.0 / 1024.0 / 1024.0;
     if raw.contains("EOCD") || raw.contains("central directory") {
