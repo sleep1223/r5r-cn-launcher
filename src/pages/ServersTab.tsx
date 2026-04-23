@@ -6,12 +6,12 @@ import { pingHost, PingResult } from "../ipc/ping";
 
 type PingState = { status: "pending" } | { status: "done"; result: PingResult };
 
-const serverKey = (sv: ServerListItem) => `${sv.name}-${sv.host}-${sv.port}`;
-const serverAddr = (sv: ServerListItem): { host: string; port: number } | null => {
-  const host = (sv.host ?? sv.ip ?? "").trim();
+const serverKey = (sv: ServerListItem) => `${sv.name}-${sv.ip}-${sv.port}`;
+const serverAddr = (sv: ServerListItem): { ip: string; port: number } | null => {
+  const ip = (sv.ip ?? "").trim();
   const port = sv.port ?? 0;
-  if (!host || !port) return null;
-  return { host, port };
+  if (!ip || !port) return null;
+  return { ip, port };
 };
 
 function pingColor(ms: number) {
@@ -47,7 +47,7 @@ export function ServersTab() {
     const seq = ++pingSeqRef.current;
     const targets = servers
       .map((sv) => ({ key: serverKey(sv), addr: serverAddr(sv) }))
-      .filter((t): t is { key: string; addr: { host: string; port: number } } => t.addr !== null);
+      .filter((t): t is { key: string; addr: { ip: string; port: number } } => t.addr !== null);
 
     setPings((prev) => {
       const next: Record<string, PingState> = {};
@@ -64,7 +64,7 @@ export function ServersTab() {
         if (idx >= targets.length) return;
         const { key, addr } = targets[idx];
         try {
-          const result = await pingHost(addr.host, addr.port, 2000);
+          const result = await pingHost(addr.ip, addr.port, 2000);
           if (cancelled || pingSeqRef.current !== seq) return;
           setPings((prev) => ({ ...prev, [key]: { status: "done", result } }));
         } catch (e) {
@@ -161,7 +161,7 @@ export function ServersTab() {
                     )}
                     {addr && (
                       <span className="font-mono text-white/40">
-                        {addr.host}:{addr.port}
+                        {addr.ip}:{addr.port}
                       </span>
                     )}
                   </div>
