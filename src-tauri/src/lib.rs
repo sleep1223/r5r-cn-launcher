@@ -149,6 +149,7 @@ pub fn run() {
             commands::accelerator::detect_accelerators_cmd,
             commands::proxy::set_proxy_mode,
             commands::proxy::test_proxy,
+            commands::ping::ping_host,
             commands::detect::detect_existing_r5r,
             commands::detect::auto_adopt_existing_install,
             commands::config::get_channel_version,
