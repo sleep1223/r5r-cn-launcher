@@ -97,6 +97,24 @@ export function ServersTab() {
     ? [...new Set(servers.map((s) => s.region).filter(Boolean))]
     : [];
 
+  // Sort: lower latency first (unknown/failed pings to the end),
+  // tie-break by higher player count.
+  const latencyOf = (sv: ServerListItem): number => {
+    const p = pings[serverKey(sv)];
+    if (p && p.status === "done" && p.result.ok && p.result.latency_ms != null) {
+      return p.result.latency_ms;
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+  const sortedServers = servers
+    ? [...servers].sort((a, b) => {
+        const la = latencyOf(a);
+        const lb = latencyOf(b);
+        if (la !== lb) return la - lb;
+        return b.player_count - a.player_count;
+      })
+    : null;
+
   return (
     <div className="p-6 space-y-5">
       {/* Stats bar */}
@@ -130,8 +148,8 @@ export function ServersTab() {
         <div className="text-white/50 text-sm">暂无在线服务器</div>
       )}
 
-      {servers &&
-        servers.map((sv) => {
+      {sortedServers &&
+        sortedServers.map((sv) => {
           const key = serverKey(sv);
           const addr = serverAddr(sv);
           const ping = pings[key];
