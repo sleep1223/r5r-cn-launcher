@@ -108,12 +108,12 @@ export function ServersTab() {
   };
   const sortedServers = servers
     ? [...servers].sort((a, b) => {
-        const la = latencyOf(a);
-        const lb = latencyOf(b);
-        if (la !== lb) return la - lb;
         const ha = a.player_count > 0 ? 1 : 0;
         const hb = b.player_count > 0 ? 1 : 0;
         if (ha !== hb) return hb - ha;
+        const la = latencyOf(a);
+        const lb = latencyOf(b);
+        if (la !== lb) return la - lb;
         return b.player_count - a.player_count;
       })
     : null;
