@@ -98,7 +98,7 @@ export function ServersTab() {
     : [];
 
   // Sort: lower latency first (unknown/failed pings to the end),
-  // tie-break by higher player count.
+  // tie-break by has-players, then by higher player count.
   const latencyOf = (sv: ServerListItem): number => {
     const p = pings[serverKey(sv)];
     if (p && p.status === "done" && p.result.ok && p.result.latency_ms != null) {
@@ -111,6 +111,9 @@ export function ServersTab() {
         const la = latencyOf(a);
         const lb = latencyOf(b);
         if (la !== lb) return la - lb;
+        const ha = a.player_count > 0 ? 1 : 0;
+        const hb = b.player_count > 0 ? 1 : 0;
+        if (ha !== hb) return hb - ha;
         return b.player_count - a.player_count;
       })
     : null;
