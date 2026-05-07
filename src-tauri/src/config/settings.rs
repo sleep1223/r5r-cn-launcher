@@ -75,6 +75,12 @@ pub struct LauncherSettings {
     /// already installed them.
     #[serde(default)]
     pub download_hd_textures: bool,
+
+    /// Whether to start EA App before launching the game and wait briefly for
+    /// its process to appear. Best-effort: a 5s timeout is non-fatal, but if
+    /// EA App can't be started at all (not installed) we abort the launch.
+    #[serde(default = "default_launch_via_ea_app")]
+    pub launch_via_ea_app: bool,
 }
 
 impl Default for LauncherSettings {
@@ -92,8 +98,13 @@ impl Default for LauncherSettings {
             dashboard_api_url: default_dashboard_api_url(),
             update_strategy: UpdateStrategy::default(),
             download_hd_textures: false,
+            launch_via_ea_app: default_launch_via_ea_app(),
         }
     }
+}
+
+fn default_launch_via_ea_app() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

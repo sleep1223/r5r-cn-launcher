@@ -57,6 +57,7 @@ export function SettingsTab() {
   const [mirrorDomain, setMirrorDomain] = useState("");
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
   const [downloadHdTextures, setDownloadHdTextures] = useState(false);
+  const [launchViaEaApp, setLaunchViaEaApp] = useState(true);
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
   // library_root, or `__custom__` to enable the manual text input.
@@ -85,6 +86,7 @@ export function SettingsTab() {
     setMirrorDomain(settings.mirror_domain);
     setUpdateStrategy(settings.update_strategy);
     setDownloadHdTextures(settings.download_hd_textures);
+    setLaunchViaEaApp(settings.launch_via_ea_app);
     setLibraryRoot(settings.library_root.replace(/\\/g, "/"));
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
@@ -235,6 +237,8 @@ export function SettingsTab() {
     const updateStrategyChanged = updateStrategy !== settings.update_strategy;
     const hdTexturesChanged =
       downloadHdTextures !== settings.download_hd_textures;
+    const launchViaEaAppChanged =
+      launchViaEaApp !== settings.launch_via_ea_app;
 
     if (
       !proxyChanged &&
@@ -242,7 +246,8 @@ export function SettingsTab() {
       !libraryRootChanged &&
       !concurrencyChanged &&
       !updateStrategyChanged &&
-      !hdTexturesChanged
+      !hdTexturesChanged &&
+      !launchViaEaAppChanged
     ) {
       return;
     }
@@ -261,6 +266,7 @@ export function SettingsTab() {
           concurrent_downloads: concurrency,
           update_strategy: updateStrategy,
           download_hd_textures: downloadHdTextures,
+          launch_via_ea_app: launchViaEaApp,
         });
         setSavedAt(Date.now());
       } catch (e) {
@@ -278,6 +284,7 @@ export function SettingsTab() {
     mirrorDomain,
     updateStrategy,
     downloadHdTextures,
+    launchViaEaApp,
     libraryRoot,
     concurrency,
     pathErrors.length,
@@ -425,6 +432,24 @@ export function SettingsTab() {
             className="h-4 w-4 accent-blue-400"
           />
           <span className="text-sm text-white/80">下载 HD 高清纹理</span>
+        </label>
+      </GlassCard>
+
+      {/* EA App 预启动 */}
+      <GlassCard>
+        <SectionHeader
+          icon="🎮"
+          title="启动游戏前先打开 EA App"
+          subtitle="点击「启动游戏」后，先唤醒 EA App 并等待最多 5 秒；超时仍会启动游戏。未安装 EA App 时会提示并中止启动。"
+        />
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={launchViaEaApp}
+            onChange={(e) => setLaunchViaEaApp(e.target.checked)}
+            className="h-4 w-4 accent-blue-400"
+          />
+          <span className="text-sm text-white/80">启用</span>
         </label>
       </GlassCard>
 
