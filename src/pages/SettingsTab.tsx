@@ -440,7 +440,7 @@ export function SettingsTab() {
         <SectionHeader
           icon="🎮"
           title="启动游戏前先打开 EA App"
-          subtitle="点击「启动游戏」后，先唤醒 EA App 并等待最多 5 秒；超时仍会启动游戏。未安装 EA App 时会提示并中止启动。"
+          subtitle="点击「启动游戏」后，先按官方启动器的方式唤醒 EA App，并校验当前 Windows 用户下是否已有 EA 登录档案。未登录会中止启动。"
         />
         <label className="flex items-center gap-3 cursor-pointer">
           <input

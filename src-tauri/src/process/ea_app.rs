@@ -1,14 +1,12 @@
-//! Start EA App and wait for its process to come up before launching the game.
+//! Start EA App and make sure a user profile is present before launching.
 //!
-//! R5Reloaded does not strictly require EA App, but many users want it running
-//! so the in-game friends overlay / Origin telemetry works. The flow is:
-//!   1. If `EADesktop.exe` is already running → done.
-//!   2. Otherwise spawn EA App (registry path → common install paths → URL
-//!      scheme `eadesktop://`). If none of those launch anything → error.
-//!   3. Poll up to 5s for the process to appear. Timeout is non-fatal — we
-//!      proceed to the game launch anyway.
+//! R5Reloaded does not strictly require EA App, but launching while EA is open
+//! at the sign-in screen is a common footgun. The official launcher starts EA
+//! from `DesktopAppPath`; we do the same, then add a conservative login check:
+//! EA App creates `%LOCALAPPDATA%\Electronic Arts\EA Desktop\user_*.ini` for
+//! the current EA user. We only inspect the file name/metadata, never tokens.
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 #[cfg(windows)]
 const EA_PROCESS_NAME: &str = "eadesktop.exe";
@@ -16,30 +14,49 @@ const EA_PROCESS_NAME: &str = "eadesktop.exe";
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 #[cfg(windows)]
 const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(windows)]
+const LOGIN_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Best-effort: ensure EA App is running before launching the game.
-///
-/// Returns `Err` only when EA App cannot be located on this machine — the
-/// caller should surface that to the user. A 5s wait timeout after a
-/// successful spawn is treated as non-fatal (we return `Ok`).
+/// Ensure EA App is running and appears to have a logged-in user profile.
 #[cfg(windows)]
 pub async fn ensure_ea_app_running() -> AppResult<()> {
-    if is_ea_app_running() {
+    if !is_ea_app_running() {
+        spawn_ea_app()?;
+
+        let deadline = std::time::Instant::now() + WAIT_TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(POLL_INTERVAL).await;
+            if is_ea_app_running() {
+                break;
+            }
+        }
+
+        if !is_ea_app_running() {
+            return Err(AppError::other(
+                "EA App 已尝试启动，但进程没有出现。请手动打开 EA App 后重试。",
+            ));
+        }
+    } else if !is_ea_app_logged_in() {
+        // Bring the existing EA App window forward so the user sees the login
+        // prompt instead of wondering why the launcher refuses to continue.
+        let _ = spawn_ea_app();
+    }
+
+    if is_ea_app_logged_in() {
         return Ok(());
     }
 
-    spawn_ea_app()?;
-
-    let deadline = std::time::Instant::now() + WAIT_TIMEOUT;
+    let deadline = std::time::Instant::now() + LOGIN_WAIT_TIMEOUT;
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(POLL_INTERVAL).await;
-        if is_ea_app_running() {
+        if is_ea_app_logged_in() {
             return Ok(());
         }
     }
-    // Timeout — non-fatal, just proceed.
-    tracing::warn!("EA App spawn succeeded but process didn't appear within {:?}", WAIT_TIMEOUT);
-    Ok(())
+
+    Err(AppError::other(
+        "EA App 已打开，但尚未检测到登录用户。请先在 EA App 完成登录后再启动游戏。",
+    ))
 }
 
 /// Stub for non-Windows dev (mac). EA App is Windows-only; on other platforms
@@ -62,12 +79,39 @@ fn is_ea_app_running() -> bool {
 }
 
 #[cfg(windows)]
+fn is_ea_app_logged_in() -> bool {
+    let Some(dir) = ea_desktop_data_dir() else {
+        return false;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+
+    entries.filter_map(Result::ok).any(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("user_") || !name.ends_with(".ini") {
+            return false;
+        }
+        entry.metadata().map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+    })
+}
+
+#[cfg(windows)]
+fn ea_desktop_data_dir() -> Option<std::path::PathBuf> {
+    let mut dir = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?);
+    dir.push("Electronic Arts");
+    dir.push("EA Desktop");
+    Some(dir)
+}
+
+#[cfg(windows)]
 fn spawn_ea_app() -> AppResult<()> {
-    use crate::error::AppError;
     use std::path::PathBuf;
     use std::process::Command;
 
-    // 1. Registry: HKLM\SOFTWARE\Electronic Arts\EA Desktop -> DesktopAppPath
+    // 1. Registry: match the official launcher path first, with a native
+    // fallback for machines that write the 64-bit key.
     if let Some(path) = registry_path() {
         if path.exists() {
             return spawn_detached(&path);
@@ -107,13 +151,40 @@ fn registry_path() -> Option<std::path::PathBuf> {
     use winreg::enums::HKEY_LOCAL_MACHINE;
     use winreg::RegKey;
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let key = hklm
-        .open_subkey(r"SOFTWARE\Electronic Arts\EA Desktop")
-        .ok()?;
-    let dir: String = key.get_value("DesktopAppPath").ok()?;
-    let mut p = std::path::PathBuf::from(dir);
-    p.push("EADesktop.exe");
-    Some(p)
+    for subkey in [
+        r"SOFTWARE\WOW6432Node\Electronic Arts\EA Desktop",
+        r"SOFTWARE\Electronic Arts\EA Desktop",
+    ] {
+        let Ok(key) = hklm.open_subkey(subkey) else {
+            continue;
+        };
+        for value in ["DesktopAppPath", "InstallLocation"] {
+            let Ok(raw) = key.get_value::<String, _>(value) else {
+                continue;
+            };
+            let path = normalize_ea_app_path(raw);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn normalize_ea_app_path(raw: String) -> std::path::PathBuf {
+    let trimmed = raw.trim().trim_matches('"');
+    let mut path = std::path::PathBuf::from(trimmed);
+    if path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.eq_ignore_ascii_case("EADesktop.exe"))
+        .unwrap_or(false)
+    {
+        return path;
+    }
+    path.push("EADesktop.exe");
+    path
 }
 
 #[cfg(windows)]
