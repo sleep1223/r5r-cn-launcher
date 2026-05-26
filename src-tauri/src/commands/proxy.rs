@@ -52,11 +52,18 @@ pub async fn test_proxy(
             }
         })
         .unwrap_or_else(|| OFFICIAL_DOMAIN.to_string());
-    let url = format!("https://{}/launcher/live_game/checksums.json", domain.trim_end_matches('/'));
+    let url = format!(
+        "https://{}/launcher/live_game/checksums.json",
+        domain.trim_end_matches('/')
+    );
 
     let client = state.http.read().await.client();
     let started = Instant::now();
-    let res = client.head(&url).timeout(Duration::from_secs(5)).send().await;
+    let res = client
+        .head(&url)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await;
     let latency_ms = started.elapsed().as_millis() as u64;
     match res {
         Ok(r) => Ok(ProxyTestResult {

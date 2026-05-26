@@ -8,7 +8,11 @@ pub enum AppError {
     Io(std::io::Error),
     Http(String),
     Manifest(String),
-    Verification { path: String, expected: String, actual: String },
+    Verification {
+        path: String,
+        expected: String,
+        actual: String,
+    },
     Settings(String),
     InvalidPath(String),
     Cancelled,

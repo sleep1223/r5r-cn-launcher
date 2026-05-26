@@ -123,9 +123,7 @@ pub async fn download_single(
             let url = url.clone();
             let dest = dest.clone();
             let pause = pause.clone();
-            async move {
-                stream_download(client, &url, channel, &dest, agg, cancel, &pause).await
-            }
+            async move { stream_download(client, &url, channel, &dest, agg, cancel, &pause).await }
         })
         .await?;
     agg.finish_file(&entry.path);

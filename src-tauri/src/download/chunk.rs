@@ -70,10 +70,8 @@ pub async fn download_chunked(
                     let cancel = cancel.clone();
                     let pause = pause_outer.clone();
                     async move {
-                        stream_download(
-                            &client, &url, &channel, &part_dest, &agg, &cancel, &pause,
-                        )
-                        .await
+                        stream_download(&client, &url, &channel, &part_dest, &agg, &cancel, &pause)
+                            .await
                     }
                 })
                 .await?;

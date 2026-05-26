@@ -7,8 +7,7 @@ use crate::download::retry::RetryPolicy;
 use crate::download::worker::{download_single, entry_local_path};
 use crate::error::{AppError, AppResult};
 use crate::events::{
-    InstallLogEvent, InstallPhase, LogLevel, ProgressEvent, EVT_INSTALL_LOG,
-    EVT_INSTALL_PROGRESS,
+    InstallLogEvent, InstallPhase, LogLevel, ProgressEvent, EVT_INSTALL_LOG, EVT_INSTALL_PROGRESS,
 };
 use crate::manifest::{fetch_manifest, is_language_match, is_user_generated, ManifestEntry};
 use crate::state::{LauncherState, PauseState};
@@ -77,7 +76,12 @@ pub async fn run_install(
     };
 
     emit(InstallPhase::Preparing);
-    emit_log(&app, &job_id, LogLevel::Info, format!("开始安装频道 {}", channel_name));
+    emit_log(
+        &app,
+        &job_id,
+        LogLevel::Info,
+        format!("开始安装频道 {}", channel_name),
+    );
 
     // 1. Resolve the metadata channel from the saved mirror domain. This is
     //    the low-traffic surface (`checksums.json` + `version.txt`).
@@ -113,7 +117,10 @@ pub async fn run_install(
         &app,
         &job_id,
         LogLevel::Info,
-        format!("频道 {} (元数据 game_url={})", channel.name, channel.game_url),
+        format!(
+            "频道 {} (元数据 game_url={})",
+            channel.name, channel.game_url
+        ),
     );
 
     let client: Client = state.http.read().await.client();
@@ -169,7 +176,12 @@ pub async fn run_install(
             .unwrap_or_default();
         if let Some(rv) = &remote_version {
             if !local_version.is_empty() && local_version == *rv {
-                emit_log(&app, &job_id, LogLevel::Info, "本地版本与远端一致，无需更新");
+                emit_log(
+                    &app,
+                    &job_id,
+                    LogLevel::Info,
+                    "本地版本与远端一致，无需更新",
+                );
                 emit(InstallPhase::Complete);
                 return Ok(());
             }
@@ -419,8 +431,7 @@ pub async fn run_install(
 
     let total_bytes: u64 = plan.iter().map(|e| e.size).sum();
     let agg = ProgressAggregator::new(job_id.clone(), plan.len(), total_bytes);
-    let emitter_handle =
-        agg.spawn_emitter(app.clone(), cancel.clone(), InstallPhase::Downloading);
+    let emitter_handle = agg.spawn_emitter(app.clone(), cancel.clone(), InstallPhase::Downloading);
 
     emit(InstallPhase::Downloading);
     emit_log(
@@ -509,12 +520,7 @@ pub async fn run_install(
         return Err(AppError::Cancelled);
     }
     if let Some(e) = first_err {
-        emit_log(
-            &app,
-            &job_id,
-            LogLevel::Error,
-            format!("下载失败: {}", e),
-        );
+        emit_log(&app, &job_id, LogLevel::Error, format!("下载失败: {}", e));
         emit(InstallPhase::Failed {
             reason: e.to_string(),
         });
@@ -547,12 +553,7 @@ pub async fn run_install(
                 expected: entry.checksum.clone(),
                 actual,
             };
-            emit_log(
-                &app,
-                &job_id,
-                LogLevel::Error,
-                format!("校验失败: {}", err),
-            );
+            emit_log(&app, &job_id, LogLevel::Error, format!("校验失败: {}", err));
             emit(InstallPhase::Failed {
                 reason: err.to_string(),
             });

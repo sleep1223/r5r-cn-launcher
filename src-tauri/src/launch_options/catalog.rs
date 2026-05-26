@@ -13,7 +13,8 @@ pub fn catalog() -> &'static LaunchOptionCatalog {
     &CATALOG
 }
 
-static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
+static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| {
+    LaunchOptionCatalog {
     categories: vec![
         Category { id: "language",    label_zh: "语言与体验" },
         Category { id: "display",     label_zh: "画面与显示" },
@@ -319,4 +320,5 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| LaunchOptionCatalog {
             conflicts_with: &[],
         },
     ],
+}
 });

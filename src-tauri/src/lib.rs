@@ -38,15 +38,13 @@ pub fn run() {
     // instead of starting a second process. Registered BEFORE any other plugin
     // per the plugin's docs — the second instance exits inside init().
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(
-        |app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        },
-    ));
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
 
     builder
         .plugin(tauri_plugin_opener::init())

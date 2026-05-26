@@ -137,9 +137,7 @@ pub async fn auto_adopt_existing_install(
 /// Given a path like `D:\Games\R5R Library\LIVE`, return
 /// `(D:\Games, "LIVE")`. Returns `None` if the path doesn't contain
 /// the `R5R Library` segment.
-fn derive_library_root(
-    channel_dir: &std::path::Path,
-) -> Option<(std::path::PathBuf, String)> {
+fn derive_library_root(channel_dir: &std::path::Path) -> Option<(std::path::PathBuf, String)> {
     let components: Vec<_> = channel_dir
         .components()
         .map(|c| c.as_os_str().to_string_lossy().to_string())

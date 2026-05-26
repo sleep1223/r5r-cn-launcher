@@ -53,11 +53,9 @@ pub fn validate_install_path(path: String) -> AppResult<PathValidation> {
     // the Windows admin/UAC requirement.
     let lower = path.to_ascii_lowercase();
     let is_on_c_drive = lower.starts_with("c:\\") || lower.starts_with("c:/");
-    let is_in_program_files =
-        lower.contains("\\program files") || lower.contains("/program files");
+    let is_in_program_files = lower.contains("\\program files") || lower.contains("/program files");
     if is_on_c_drive && is_in_program_files {
-        warnings
-            .push("安装在 C 盘 Program Files 下需要管理员权限，建议改用其他位置".into());
+        warnings.push("安装在 C 盘 Program Files 下需要管理员权限，建议改用其他位置".into());
     }
 
     let normalized = if errors.is_empty() {

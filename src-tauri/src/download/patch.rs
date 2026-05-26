@@ -167,14 +167,7 @@ async fn download_to_file(
             } else {
                 0
             };
-            emit_downloading(
-                app,
-                job_id,
-                bytes_done,
-                total,
-                speed,
-                "下载补丁包中 …",
-            );
+            emit_downloading(app, job_id, bytes_done, total, speed, "下载补丁包中 …");
         }
     }
     file.flush().await?;

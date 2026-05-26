@@ -24,11 +24,9 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
             if !display_name.to_ascii_lowercase().contains("r5reloaded") {
                 continue;
             }
-            let install_location: String =
-                sub.get_value("InstallLocation").unwrap_or_default();
+            let install_location: String = sub.get_value("InstallLocation").unwrap_or_default();
             let display_icon: String = sub.get_value("DisplayIcon").unwrap_or_default();
-            let display_version: String =
-                sub.get_value("DisplayVersion").unwrap_or_default();
+            let display_version: String = sub.get_value("DisplayVersion").unwrap_or_default();
 
             let path = if !install_location.is_empty() {
                 install_location

@@ -93,7 +93,10 @@ fn is_ea_app_logged_in() -> bool {
         if !name.starts_with("user_") || !name.ends_with(".ini") {
             return false;
         }
-        entry.metadata().map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+        entry
+            .metadata()
+            .map(|m| m.is_file() && m.len() > 0)
+            .unwrap_or(false)
     })
 }
 

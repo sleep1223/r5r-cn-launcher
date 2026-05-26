@@ -15,14 +15,11 @@ pub fn detect() -> Result<Vec<DetectedInstall>> {
     // Prefer the working directory — that's the actual install dir for an
     // R5Reloaded shortcut. Fall back to the dirname of the link target if
     // working dir is missing.
-    let install_dir = link
-        .working_dir()
-        .clone()
-        .or_else(|| {
-            link.relative_path()
-                .clone()
-                .and_then(|rp| PathBuf::from(rp).parent().map(|p| p.display().to_string()))
-        });
+    let install_dir = link.working_dir().clone().or_else(|| {
+        link.relative_path()
+            .clone()
+            .and_then(|rp| PathBuf::from(rp).parent().map(|p| p.display().to_string()))
+    });
 
     let raw_path = match install_dir {
         Some(p) => p,

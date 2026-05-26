@@ -5,11 +5,7 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
-pub async fn launch_game(
-    app: &AppHandle,
-    install_dir: &Path,
-    args: Vec<String>,
-) -> AppResult<u32> {
+pub async fn launch_game(app: &AppHandle, install_dir: &Path, args: Vec<String>) -> AppResult<u32> {
     let exe = install_dir.join("r5apex.exe");
     if !exe.exists() {
         return Err(AppError::NotFound(format!(

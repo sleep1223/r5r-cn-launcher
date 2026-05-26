@@ -69,9 +69,7 @@ pub enum OptionKind {
     /// different flag (e.g. `-fullscreen` vs `-noborder -window`). The
     /// selected value is `OptionValue::Enum(value_id)` and compose pushes
     /// the matching `args` slice verbatim.
-    EnumArgs {
-        choices: &'static [EnumArgChoice],
-    },
+    EnumArgs { choices: &'static [EnumArgChoice] },
     /// FOV-style: stored as **integer degrees** (e.g. 70..=120), emitted as
     /// the float scale `degrees / base` (Apex's `+cl_fovScale 1.0` = 70°,
     /// 1.7 ≈ 120°). The user thinks in degrees; the wire format is the

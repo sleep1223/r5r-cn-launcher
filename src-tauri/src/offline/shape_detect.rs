@@ -108,9 +108,7 @@ pub fn preflight_zip(zip_path: &Path) -> AppResult<()> {
     let n = f.read(&mut magic)?;
     if n >= 4 {
         match magic {
-            [0x50, 0x4b, 0x03, 0x04]
-            | [0x50, 0x4b, 0x05, 0x06]
-            | [0x50, 0x4b, 0x07, 0x08] => {}
+            [0x50, 0x4b, 0x03, 0x04] | [0x50, 0x4b, 0x05, 0x06] | [0x50, 0x4b, 0x07, 0x08] => {}
             // 7z archive signature (37 7A BC AF 27 1C)
             [0x37, 0x7a, 0xbc, 0xaf] => {
                 return Err(AppError::InvalidPath(
@@ -148,14 +146,8 @@ pub fn preflight_zip(zip_path: &Path) -> AppResult<()> {
     // Split-volume companions — zip-rs 2.x does not read multi-volume sets.
     // Check for both naming conventions used by Windows archivers.
     if let Some(parent) = zip_path.parent() {
-        let stem = zip_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        let filename = zip_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let stem = zip_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let filename = zip_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
         // WinZip/Bandizip split: foo.zip + foo.z01 + foo.z02 ...
         let z01 = parent.join(format!("{}.z01", stem));

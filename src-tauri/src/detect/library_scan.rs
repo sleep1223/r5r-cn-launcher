@@ -38,9 +38,7 @@ pub fn detect(extra_roots: &[String]) -> Vec<DetectedInstall> {
             }
             let exe = path.join("r5apex.exe");
             if exe.exists() {
-                let channel = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string());
+                let channel = path.file_name().map(|n| n.to_string_lossy().to_string());
                 out.push(DetectedInstall {
                     source: DetectSource::LibraryScan,
                     path: crate::util::display_slash(&path),

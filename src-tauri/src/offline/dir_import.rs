@@ -26,7 +26,10 @@ pub async fn import_directory(
     // Plan: walk the source tree once, collect all regular files + total size.
     // Emit Preparing progress periodically and check cancel between entries so
     // the 取消 button actually interrupts a slow scan on spinning disks.
-    emit(app, ProgressEvent::empty(job_id.into(), InstallPhase::Preparing));
+    emit(
+        app,
+        ProgressEvent::empty(job_id.into(), InstallPhase::Preparing),
+    );
     let mut files: Vec<(PathBuf, PathBuf, u64)> = Vec::new();
     let mut total_bytes: u64 = 0;
     let mut scanned: usize = 0;
@@ -165,11 +168,7 @@ fn emit(app: &AppHandle, ev: ProgressEvent) {
     let _ = app.emit(EVT_INSTALL_PROGRESS, ev);
 }
 
-fn copy_file_with_progress(
-    src: &Path,
-    dst: &Path,
-    counter: &Arc<AtomicU64>,
-) -> AppResult<()> {
+fn copy_file_with_progress(src: &Path, dst: &Path, counter: &Arc<AtomicU64>) -> AppResult<()> {
     use std::io::{Read, Write};
     let mut input = std::fs::File::open(src)?;
     let mut output = std::fs::File::create(dst)?;

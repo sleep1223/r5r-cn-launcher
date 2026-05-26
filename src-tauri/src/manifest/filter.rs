@@ -19,7 +19,9 @@ pub fn is_language_match(entry: &ManifestEntry, wanted: &[&str]) -> bool {
     if entry.language.is_empty() {
         return true;
     }
-    wanted.iter().any(|w| w.eq_ignore_ascii_case(&entry.language))
+    wanted
+        .iter()
+        .any(|w| w.eq_ignore_ascii_case(&entry.language))
 }
 
 #[cfg(test)]

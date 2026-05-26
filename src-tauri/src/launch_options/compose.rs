@@ -48,7 +48,11 @@ pub fn compose_launch_args(selection: &LaunchOptionSelection) -> Vec<String> {
                 let scale = degrees as f64 / *base as f64;
                 let s = format!("{:.4}", scale);
                 let trimmed = s.trim_end_matches('0').trim_end_matches('.').to_string();
-                out.push(if trimmed.is_empty() { "0".to_string() } else { trimmed });
+                out.push(if trimmed.is_empty() {
+                    "0".to_string()
+                } else {
+                    trimmed
+                });
             }
             OptionKind::Int { flag, .. } => {
                 let v = match value {
@@ -108,7 +112,9 @@ mod tests {
     fn defaults_compose_to_chinese_pylon_and_novid() {
         // Defaults must stay locked: language, pylon hostname, then -novid
         // (skip-intro is default-on as of v0.4 — see catalog.rs).
-        let sel = LaunchOptionSelection { items: HashMap::new() };
+        let sel = LaunchOptionSelection {
+            items: HashMap::new(),
+        };
         let args = compose_launch_args(&sel);
         assert_eq!(
             args,
@@ -127,7 +133,10 @@ mod tests {
         let mut items = HashMap::new();
         items.insert(
             "language".to_string(),
-            SelectionEntry { enabled: false, value: None },
+            SelectionEntry {
+                enabled: false,
+                value: None,
+            },
         );
         let sel = LaunchOptionSelection { items };
         let args = compose_launch_args(&sel);
@@ -195,7 +204,10 @@ mod tests {
         let mut items = HashMap::new();
         items.insert(
             "mouse_optimize".to_string(),
-            SelectionEntry { enabled: true, value: None },
+            SelectionEntry {
+                enabled: true,
+                value: None,
+            },
         );
         let sel = LaunchOptionSelection { items };
         let args = compose_launch_args(&sel);

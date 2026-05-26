@@ -116,7 +116,9 @@ mod tests {
 
     #[test]
     fn defaults_have_no_warnings() {
-        let sel = LaunchOptionSelection { items: HashMap::new() };
+        let sel = LaunchOptionSelection {
+            items: HashMap::new(),
+        };
         let w = validate_launch_args(&sel);
         assert_eq!(w.len(), 0);
     }
@@ -152,7 +154,10 @@ mod tests {
         );
         items.insert(
             "no_render_on_input_thread".to_string(),
-            SelectionEntry { enabled: true, value: None },
+            SelectionEntry {
+                enabled: true,
+                value: None,
+            },
         );
         let sel = LaunchOptionSelection { items };
         let w = validate_launch_args(&sel);

@@ -40,11 +40,7 @@ pub enum UpdatePhase {
 
 /// Download the installer from `url` to a temp file, emitting progress events.
 /// Returns the path to the downloaded file.
-pub async fn download_installer(
-    app: &AppHandle,
-    client: &Client,
-    url: &str,
-) -> AppResult<PathBuf> {
+pub async fn download_installer(app: &AppHandle, client: &Client, url: &str) -> AppResult<PathBuf> {
     tracing::info!(target: "updater", "downloading installer from {}", url);
 
     let resp = client

@@ -54,8 +54,8 @@ fn build_client(mode: &ProxyMode, user_agent: &str) -> AppResult<Client> {
             builder = builder.no_proxy();
         }
         ProxyMode::Custom(url) => {
-            let proxy = Proxy::all(url)
-                .map_err(|e| AppError::http(format!("代理 URL 无效: {}", e)))?;
+            let proxy =
+                Proxy::all(url).map_err(|e| AppError::http(format!("代理 URL 无效: {}", e)))?;
             builder = builder.proxy(proxy);
         }
         ProxyMode::System => {

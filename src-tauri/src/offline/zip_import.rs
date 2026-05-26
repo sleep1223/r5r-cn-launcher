@@ -140,9 +140,7 @@ where
         let mut entry = match zip::read::read_zipfile_from_stream(&mut reader) {
             Ok(Some(e)) => e,
             Ok(None) => break, // Reached central directory — normal end of stream.
-            Err(zip::result::ZipError::Io(e))
-                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-            {
+            Err(zip::result::ZipError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Stream truncated mid-entry. Let the post-condition (anchor
                 // seen?) decide whether this is a hard failure; a complete
                 // game body with a truncated tail is still installable via

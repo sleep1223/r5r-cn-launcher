@@ -1,10 +1,8 @@
 use crate::config::Channel;
-use crate::manifest::fetch_manifest;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
-use crate::events::{
-    new_job_id, InstallJobId, InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS,
-};
+use crate::events::{new_job_id, InstallJobId, InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
+use crate::manifest::fetch_manifest;
 use crate::offline::dir_import::import_directory;
 use crate::offline::shape_detect::detect_directory;
 use crate::offline::zip_import::import_zip_strict;
@@ -121,7 +119,9 @@ pub async fn start_offline_import(
                     EVT_INSTALL_PROGRESS,
                     ProgressEvent::empty(
                         job_id_clone.clone(),
-                        InstallPhase::Failed { reason: e.to_string() },
+                        InstallPhase::Failed {
+                            reason: e.to_string(),
+                        },
                     ),
                 );
             }
