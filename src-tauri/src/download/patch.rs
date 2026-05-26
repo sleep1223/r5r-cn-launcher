@@ -9,11 +9,14 @@
 //! pipeline in `pipeline.rs`.
 
 use crate::dashboard::{fetch_dashboard_config, PatchEntry};
+use crate::download::worker::entry_local_path;
 use crate::error::{AppError, AppResult};
 use crate::events::{InstallPhase, ProgressEvent, EVT_INSTALL_PROGRESS};
+use crate::manifest::{is_language_match, is_user_generated, GameManifest};
 use crate::offline::shape_detect::scan_zip_kept_entries;
 use crate::offline::zip_import::extract_keep_prefixes;
 use crate::state::LauncherState;
+use crate::verify::sha256_file;
 use futures::StreamExt;
 use reqwest::Client;
 use std::path::{Path, PathBuf};
@@ -36,6 +39,7 @@ pub async fn apply_patch(
     channel_name: &str,
     from_version: &str,
     to_version: &str,
+    target_manifest: &GameManifest,
     cancel: CancellationToken,
 ) -> AppResult<PatchOutcome> {
     if from_version.is_empty() || to_version.is_empty() || from_version == to_version {
@@ -43,9 +47,13 @@ pub async fn apply_patch(
     }
 
     // 1. Look up an applicable patch entry.
-    let (dashboard_url, library_root) = {
+    let (dashboard_url, library_root, download_hd_textures) = {
         let s = state.settings.read();
-        (s.dashboard_api_url.clone(), s.library_root.clone())
+        (
+            s.dashboard_api_url.clone(),
+            s.library_root.clone(),
+            s.download_hd_textures,
+        )
     };
     if library_root.is_empty() {
         return Err(AppError::settings("尚未配置安装根目录"));
@@ -69,6 +77,7 @@ pub async fn apply_patch(
     let tmp_zip = tmp_dir.join(format!("patch-{}-to-{}.zip", from_version, to_version));
 
     download_to_file(app, job_id, &client, &patch.url, &tmp_zip, &cancel).await?;
+    validate_downloaded_patch(&tmp_zip, &patch).await?;
 
     // 3. Extract on top of `library_root` — overwrites in place.
     let (total_bytes, file_count) = scan_zip_kept_entries(&tmp_zip)?;
@@ -91,7 +100,20 @@ pub async fn apply_patch(
     .await?;
     let _ = std::fs::remove_file(&tmp_zip);
 
-    // 4. Bump version.
+    // 4. Verify the patched install against the target manifest before
+    //    accepting the version bump. If this fails the caller falls back to
+    //    the normal verify/download pipeline, which repairs the partial state.
+    emit_downloading(app, job_id, 0, 0, 0, "校验补丁包结果 …");
+    verify_patched_install(
+        &lib_path,
+        channel_name,
+        target_manifest,
+        download_hd_textures,
+        cancel.clone(),
+    )
+    .await?;
+
+    // 5. Bump version.
     {
         let mut s = state.settings.write();
         let entry = s.channels.entry(channel_name.to_string()).or_default();
@@ -107,6 +129,55 @@ pub async fn apply_patch(
     Ok(PatchOutcome::Applied)
 }
 
+async fn verify_patched_install(
+    library_root: &Path,
+    channel_name: &str,
+    manifest: &GameManifest,
+    download_hd_textures: bool,
+    cancel: CancellationToken,
+) -> AppResult<()> {
+    let install_dir = library_root
+        .join("R5R Library")
+        .join(channel_name.to_uppercase());
+    let languages_wanted = ["schinese"];
+
+    for entry in manifest.files.iter().filter(|entry| {
+        !is_user_generated(&entry.path)
+            && if entry.optional {
+                download_hd_textures && entry.language.is_empty()
+            } else if entry.language.is_empty() {
+                true
+            } else {
+                is_language_match(entry, &languages_wanted)
+            }
+    }) {
+        if cancel.is_cancelled() {
+            return Err(AppError::Cancelled);
+        }
+        if entry.checksum.is_empty() {
+            continue;
+        }
+        let local = entry_local_path(&install_dir, &entry.path);
+        if !local.exists() {
+            return Err(AppError::Verification {
+                path: entry.path.clone(),
+                expected: entry.checksum.clone(),
+                actual: "missing".to_string(),
+            });
+        }
+        let actual = sha256_file(&local).await?;
+        if !actual.eq_ignore_ascii_case(&entry.checksum) {
+            return Err(AppError::Verification {
+                path: entry.path.clone(),
+                expected: entry.checksum.clone(),
+                actual,
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn find_patch<'a>(
     patches: &'a [PatchEntry],
     from_version: &str,
@@ -115,6 +186,32 @@ fn find_patch<'a>(
     patches
         .iter()
         .find(|p| p.from_version == from_version && p.to_version == to_version && !p.url.is_empty())
+}
+
+async fn validate_downloaded_patch(path: &Path, patch: &PatchEntry) -> AppResult<()> {
+    if patch.size > 0 {
+        let actual = tokio::fs::metadata(path).await?.len();
+        if actual != patch.size {
+            return Err(AppError::Verification {
+                path: patch.url.clone(),
+                expected: patch.size.to_string(),
+                actual: actual.to_string(),
+            });
+        }
+    }
+
+    if !patch.checksum.is_empty() {
+        let actual = sha256_file(path).await?;
+        if !actual.eq_ignore_ascii_case(&patch.checksum) {
+            return Err(AppError::Verification {
+                path: patch.url.clone(),
+                expected: patch.checksum.clone(),
+                actual,
+            });
+        }
+    }
+
+    Ok(())
 }
 
 async fn download_to_file(

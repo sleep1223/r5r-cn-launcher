@@ -48,6 +48,10 @@ pub struct PatchEntry {
     pub to_version: String,
     #[serde(default)]
     pub url: String,
+    #[serde(default)]
+    pub checksum: String,
+    #[serde(default)]
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

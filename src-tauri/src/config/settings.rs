@@ -10,8 +10,9 @@ pub const CURRENT_SCHEMA: u32 = 1;
 
 /// How updates resolve mismatched files. `Verify` walks the manifest and
 /// re-downloads anything whose SHA-256 doesn't match — slow but always
-/// correct. `Patch` (TODO) applies binary patches from the dashboard's
-/// `patches[]`, falling back to `Verify` when no patch path covers the gap.
+/// correct. `Patch` applies a dashboard-provided zip from `patches[]`, verifies
+/// the patched install against the target manifest, then falls back to `Verify`
+/// when no patch path covers the gap or the patch cannot be accepted.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateStrategy {
@@ -64,8 +65,7 @@ pub struct LauncherSettings {
     #[serde(default = "default_dashboard_api_url")]
     pub dashboard_api_url: String,
 
-    /// How "更新" resolves outdated files (校验 vs. 补丁包). Defaults to
-    /// `Verify` because patches aren't wired through the pipeline yet.
+    /// How "更新" resolves outdated files (校验 vs. 补丁包).
     #[serde(default)]
     pub update_strategy: UpdateStrategy,
 

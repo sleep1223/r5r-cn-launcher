@@ -203,6 +203,7 @@ pub async fn run_install(
                     &channel.name,
                     &local_version,
                     rv,
+                    &manifest,
                     cancel.clone(),
                 )
                 .await
