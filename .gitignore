@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.venv
+__pycache__/
+tools/patch-builder/.ruff_cache/
+tools/patch-builder/.venv/
+tools/patch-builder/workspace/
 
 # Editor directories and files
 .vscode/*
