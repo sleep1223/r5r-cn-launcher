@@ -18,20 +18,21 @@ Use `pnpm`; the Tauri config calls pnpm from its dev/build hooks.
 - `pnpm dev` runs the frontend only, useful for React UI iteration.
 - `pnpm build` runs `tsc` and creates the Vite production build.
 - `pnpm tauri build` creates the distributable desktop bundle.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` checks Rust formatting without modifying files.
 - `cargo check --manifest-path src-tauri/Cargo.toml` validates Rust backend changes quickly.
 - `cargo test --manifest-path src-tauri/Cargo.toml --lib` runs backend unit tests.
 
-Unless explicitly instructed otherwise, use check-only gate validation by default. Do not run full compile/build or test commands unless the user specifically asks for them.
+After any file change, run the default gates before handing off: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` and `cargo check --manifest-path src-tauri/Cargo.toml`. Do not run full compile/build or test commands unless the user specifically asks for them or the change is a version bump.
 
 ## Coding Style & Naming Conventions
 
 TypeScript is strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`) and uses React JSX. Prefer `PascalCase` for components/pages, `useXxx` for hooks, and small typed IPC wrappers in `src/ipc/`.
 
-Rust uses the standard module naming style: `snake_case` files/modules, `PascalCase` types, and `snake_case` functions. No project formatter or linter is configured; keep formatting consistent with nearby code and run the validation commands above.
+Rust uses the standard module naming style: `snake_case` files/modules, `PascalCase` types, and `snake_case` functions. No project-specific formatter or linter is configured; use standard `cargo fmt` checks for Rust formatting. There is currently no ESLint, Prettier, Clippy, or frontend test script.
 
 ## Testing Guidelines
 
-Add Rust unit tests beside the code they cover. Existing tests focus on launch-option composition/validation, manifest filtering, checksum verification, retry policy, updater helpers, and offline import shape detection. After backend edits, default to `cargo check --manifest-path src-tauri/Cargo.toml`; run `cargo test --manifest-path src-tauri/Cargo.toml --lib`, `pnpm build`, or other full build/test gates only when explicitly requested.
+Add Rust unit tests beside the code they cover. Existing tests focus on launch-option composition/validation, manifest filtering, checksum verification, retry policy, updater helpers, and offline import shape detection. After backend edits, default to `cargo check --manifest-path src-tauri/Cargo.toml`; run `cargo test --manifest-path src-tauri/Cargo.toml --lib`, `pnpm build`, or other full build/test gates only when explicitly requested. `pnpm build` is the frontend validation gate because it runs TypeScript checking via `tsc` before Vite builds.
 
 ## Commit & Pull Request Guidelines
 
@@ -39,4 +40,4 @@ Recent commits use release-style subjects such as `v0.36.0: launch EA App and wa
 
 ## Release & Configuration Notes
 
-Do not bump versions unless explicitly requested. A release bump must update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` together. Never commit signing private keys; release signing uses GitHub Actions secrets.
+Do not bump versions unless explicitly requested. A release bump must update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` together so local version files match the release tag. For version bumps, run `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo check --manifest-path src-tauri/Cargo.toml`, and `cargo test --manifest-path src-tauri/Cargo.toml --lib` before tagging. After validation, commit the version change and create the matching `vX.Y.Z` tag. The release workflow installs with `pnpm install --frozen-lockfile` and builds Windows artifacts with `pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis`. Never commit signing private keys; release signing uses GitHub Actions secrets.
