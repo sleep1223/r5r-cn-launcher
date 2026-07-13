@@ -95,9 +95,23 @@ pub fn run() {
                 .or_else(|_| HttpClientFactory::new(ProxyMode::None, USER_AGENT))
                 .expect("HTTP 客户端构建彻底失败");
 
+            let launch_ea_on_startup = settings.launch_via_ea_app;
             let state = LauncherState::new(settings, http);
             *state.config_dir.write() = config_dir;
             app.manage(state);
+
+            // Start EA alongside the launcher instead of delaying the user's
+            // click on "启动游戏". This is best-effort here: launch-time
+            // validation will show a useful error if EA is absent or logged
+            // out, while a missing EA install must not prevent settings from
+            // opening.
+            if launch_ea_on_startup {
+                tauri::async_runtime::spawn(async {
+                    if let Err(e) = crate::process::ea_app::start_ea_app_in_background() {
+                        tracing::warn!(target: "ea_app", "启动器启动时打开 EA App 失败: {}", e);
+                    }
+                });
+            }
 
             // Background accelerator poller. Scans the running process list
             // every 15s; if the set of detected accelerators changes (new

@@ -435,12 +435,12 @@ export function SettingsTab() {
         </label>
       </GlassCard>
 
-      {/* EA App 预启动 */}
+      {/* EA App 随启动器启动 */}
       <GlassCard>
         <SectionHeader
           icon="🎮"
-          title="启动游戏前先打开 EA App"
-          subtitle="点击「启动游戏」后，先按官方启动器的方式唤醒 EA App，并校验当前 Windows 用户下是否已有 EA 登录档案。未登录会中止启动。"
+          title="启动器启动时打开 EA App"
+          subtitle="打开本启动器时会在后台尝试启动 EA App；点击「启动游戏」时只校验 EA App 是否仍在运行，以及当前 Windows 用户下是否已有 EA 登录档案。未运行或未登录会中止启动。"
         />
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -449,7 +449,7 @@ export function SettingsTab() {
             onChange={(e) => setLaunchViaEaApp(e.target.checked)}
             className="h-4 w-4 accent-blue-400"
           />
-          <span className="text-sm text-white/80">启用</span>
+          <span className="text-sm text-white/80">随启动器打开 EA App</span>
         </label>
       </GlassCard>
 

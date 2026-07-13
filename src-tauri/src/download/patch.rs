@@ -93,6 +93,7 @@ pub async fn apply_patch(
         job_id,
         &tmp_zip,
         &lib_path,
+        channel_name,
         total_bytes,
         file_count,
         cancel.clone(),

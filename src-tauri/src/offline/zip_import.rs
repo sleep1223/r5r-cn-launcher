@@ -257,6 +257,7 @@ pub async fn extract_keep_prefixes(
     job_id: &str,
     zip_path: &Path,
     install_root: &Path,
+    install_channel: &str,
     total_bytes: u64,
     file_count: usize,
     cancel: CancellationToken,
@@ -314,7 +315,12 @@ pub async fn extract_keep_prefixes(
         if rel_buf.as_os_str().is_empty() {
             continue;
         }
-        let dst = install_root.join(&rel_buf);
+        // Patch builders use the canonical archive channel (normally LIVE),
+        // while older launcher installs may be stored under LIVE_GAME. Apply
+        // the files to the channel that is actually being updated instead of
+        // trusting the channel directory embedded in the zip.
+        let dst_rel = remap_patch_channel(&rel_buf, install_channel);
+        let dst = install_root.join(&dst_rel);
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -352,7 +358,7 @@ pub async fn extract_keep_prefixes(
                         file_count,
                         bytes_done,
                         bytes_total: total_bytes,
-                        current_file: crate::util::display_slash(&rel_buf),
+                        current_file: crate::util::display_slash(&dst_rel),
                         speed_bps: speed,
                         eta_seconds: eta,
                     },
@@ -364,6 +370,24 @@ pub async fn extract_keep_prefixes(
     }
 
     Ok(())
+}
+
+fn remap_patch_channel(path: &Path, install_channel: &str) -> PathBuf {
+    let parts: Vec<_> = path.iter().collect();
+    let is_library_entry = parts.len() >= 3
+        && parts[0]
+            .to_string_lossy()
+            .eq_ignore_ascii_case("R5R Library");
+    if !is_library_entry {
+        return path.to_path_buf();
+    }
+
+    let mut remapped = PathBuf::from("R5R Library");
+    remapped.push(install_channel.to_uppercase());
+    for part in &parts[2..] {
+        remapped.push(part);
+    }
+    remapped
 }
 
 #[cfg(test)]
@@ -389,6 +413,20 @@ mod tests {
             CancellationToken::new(),
             |_| {},
         )
+    }
+
+    #[test]
+    fn patch_channel_is_remapped_to_the_installed_channel() {
+        let rel = Path::new("R5R Library/LIVE/bin/client.dll");
+        assert_eq!(
+            remap_patch_channel(rel, "live_game"),
+            PathBuf::from("R5R Library/LIVE_GAME/bin/client.dll")
+        );
+        let launcher_rel = Path::new("R5R Launcher/config.json");
+        assert_eq!(
+            remap_patch_channel(launcher_rel, "live_game"),
+            launcher_rel.to_path_buf()
+        );
     }
 
     #[test]

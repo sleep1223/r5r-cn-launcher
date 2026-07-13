@@ -1,4 +1,4 @@
-//! Start EA App and make sure a user profile is present before launching.
+//! Start EA App with the launcher and verify its state before launching a game.
 //!
 //! R5Reloaded does not strictly require EA App, but launching while EA is open
 //! at the sign-in screen is a common footgun. The official launcher starts EA
@@ -17,12 +17,30 @@ const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(windows)]
 const LOGIN_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Ensure EA App is running and appears to have a logged-in user profile.
+/// Best-effort startup hook used when the launcher itself starts.
+///
+/// The EA process is detached from the launcher and does not create a console
+/// window. Whether EA Desktop shows its own GUI is controlled by EA App.
 #[cfg(windows)]
-pub async fn ensure_ea_app_running() -> AppResult<()> {
+pub fn start_ea_app_in_background() -> AppResult<()> {
     if !is_ea_app_running() {
         spawn_ea_app()?;
+    }
+    Ok(())
+}
 
+#[cfg(not(windows))]
+pub fn start_ea_app_in_background() -> AppResult<()> {
+    Ok(())
+}
+
+/// Verify that EA App, started with the launcher, is running and logged in.
+#[cfg(windows)]
+pub async fn verify_ea_app_ready() -> AppResult<()> {
+    if !is_ea_app_running() {
+        // The launcher startup hook may still be bringing EA up if the user
+        // clicks immediately, so allow that background attempt a short grace
+        // period without launching EA again from the game button.
         let deadline = std::time::Instant::now() + WAIT_TIMEOUT;
         while std::time::Instant::now() < deadline {
             tokio::time::sleep(POLL_INTERVAL).await;
@@ -30,16 +48,11 @@ pub async fn ensure_ea_app_running() -> AppResult<()> {
                 break;
             }
         }
-
         if !is_ea_app_running() {
             return Err(AppError::other(
-                "EA App 已尝试启动，但进程没有出现。请手动打开 EA App 后重试。",
+                "EA App 未运行。请手动打开 EA App，或重启启动器后再试。",
             ));
         }
-    } else if !is_ea_app_logged_in() {
-        // Bring the existing EA App window forward so the user sees the login
-        // prompt instead of wondering why the launcher refuses to continue.
-        let _ = spawn_ea_app();
     }
 
     if is_ea_app_logged_in() {
@@ -62,7 +75,7 @@ pub async fn ensure_ea_app_running() -> AppResult<()> {
 /// Stub for non-Windows dev (mac). EA App is Windows-only; on other platforms
 /// we silently skip the pre-launch step so `pnpm tauri dev` still works.
 #[cfg(not(windows))]
-pub async fn ensure_ea_app_running() -> AppResult<()> {
+pub async fn verify_ea_app_ready() -> AppResult<()> {
     Ok(())
 }
 
@@ -145,7 +158,7 @@ fn spawn_ea_app() -> AppResult<()> {
     }
 
     Err(AppError::other(
-        "未能启动 EA App，请确认已安装 EA App 后重试，或在设置中关闭“启动前先打开 EA App”。",
+        "未能启动 EA App，请确认已安装 EA App 后重试，或在设置中关闭“启动器启动时打开 EA App”。",
     ))
 }
 

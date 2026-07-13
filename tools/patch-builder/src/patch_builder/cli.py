@@ -28,7 +28,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-DEFAULT_CDN_DOMAIN = "cdn-r5r-org.sleep0.de"
+DEFAULT_CDN_DOMAIN = "cdn.r5r.org"
 DEFAULT_REMOTE_CHANNEL = "live_game"
 DEFAULT_INSTALL_CHANNEL = "LIVE"
 DEFAULT_LANGUAGE = "schinese"
@@ -58,6 +58,7 @@ class BuildConfig:
     force: bool
     all_files: bool
     skip_download_verify: bool
+    proxy_url: str | None
 
 
 class RemoteFileMismatchError(RuntimeError):
@@ -122,11 +123,20 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
 
     parser.add_argument("--cdn-domain", default=DEFAULT_CDN_DOMAIN, help="文件下载 CDN 域名")
+    parser.add_argument(
+        "--proxy",
+        help=(
+            "manifest 和文件下载使用的 HTTP/HTTPS 代理，例如 http://127.0.0.1:7890；"
+            "未指定时沿用 HTTP_PROXY/HTTPS_PROXY 环境变量"
+        ),
+    )
     parser.add_argument("--remote-channel", default=DEFAULT_REMOTE_CHANNEL, help="CDN 频道路径")
     parser.add_argument(
         "--install-channel", default=DEFAULT_INSTALL_CHANNEL, help="zip 内安装频道目录"
     )
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_PATCHES_DIR, help="本地补丁输出目录")
+    parser.add_argument(
+        "--out-dir", type=Path, default=DEFAULT_PATCHES_DIR, help="本地补丁输出目录"
+    )
     parser.add_argument("--concurrency", type=int, default=4, help="并发下载文件数")
     parser.add_argument(
         "--languages",
@@ -152,7 +162,8 @@ def run(args: argparse.Namespace) -> None:
     manifest_url = args.manifest_url or (
         f"https://{args.cdn_domain}/launcher/{args.remote_channel}/checksums.json"
     )
-    to_manifest = load_or_fetch_manifest(args.to_checksums, manifest_url)
+    proxy_url = args.proxy.strip() if args.proxy else None
+    to_manifest = load_or_fetch_manifest(args.to_checksums, manifest_url, proxy_url)
     to_version = required_version(to_manifest, "新版")
     save_versioned_manifest(manifests_dir, to_manifest)
 
@@ -205,6 +216,7 @@ def run(args: argparse.Namespace) -> None:
         force=args.force,
         all_files=args.all_files,
         skip_download_verify=args.skip_download_verify,
+        proxy_url=proxy_url,
     )
 
     build_patch(config, from_version, to_version)
@@ -296,13 +308,13 @@ def build_patch(config: BuildConfig, from_version: str, to_version: str) -> None
     console.print(result)
 
 
-def load_or_fetch_manifest(path: Path | None, url: str) -> dict[str, Any]:
+def load_or_fetch_manifest(path: Path | None, url: str, proxy_url: str | None) -> dict[str, Any]:
     if path:
         manifest = read_json(path)
         console.print(f"[cyan]读取新版 manifest：[/cyan]{path}")
         return manifest
     console.print(f"[cyan]拉取新版 manifest：[/cyan]{url}")
-    data = fetch_bytes(url)
+    data = fetch_bytes(url, proxy_url)
     return json.loads(data.decode("utf-8"))
 
 
@@ -493,6 +505,7 @@ def download_entry(
                 label=f"{manifest_path} part {idx}",
                 expected_checksum=None if config.skip_download_verify else expected or None,
                 expected_size=None if config.skip_download_verify else size if size > 0 else None,
+                proxy_url=config.proxy_url,
             )
             part_paths.append(part_path)
         with destination.open("wb") as out:
@@ -510,6 +523,7 @@ def download_entry(
             label=manifest_path,
             expected_checksum=None if config.skip_download_verify else expected or None,
             expected_size=None if config.skip_download_verify else size if size > 0 else None,
+            proxy_url=config.proxy_url,
         )
 
     expected = str(entry.get("checksum", "") or "")
@@ -526,13 +540,14 @@ def download_with_retry(
     label: str,
     expected_checksum: str | None,
     expected_size: int | None,
+    proxy_url: str | None,
 ) -> None:
     last_error: Exception | None = None
     for attempt in range(1, 4):
         request_url = add_cache_buster(url, attempt) if attempt > 1 else url
         bytes_written = 0
         try:
-            bytes_written = download_file(request_url, destination, progress, task_id)
+            bytes_written = download_file(request_url, destination, progress, task_id, proxy_url)
             if expected_checksum:
                 verify_downloaded_file(
                     destination,
@@ -554,11 +569,17 @@ def download_with_retry(
     raise RuntimeError(f"下载失败 {url}: {last_error}") from last_error
 
 
-def download_file(url: str, destination: Path, progress: Progress, task_id: TaskID) -> int:
+def download_file(
+    url: str,
+    destination: Path,
+    progress: Progress,
+    task_id: TaskID,
+    proxy_url: str | None,
+) -> int:
     tmp = destination.with_suffix(destination.suffix + ".download")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     bytes_written = 0
-    with urllib.request.urlopen(request, timeout=30) as response, tmp.open("wb") as out:
+    with open_url(request, proxy_url) as response, tmp.open("wb") as out:
         status = getattr(response, "status", 200)
         if status < 200 or status >= 300:
             raise RuntimeError(f"HTTP {status}")
@@ -601,13 +622,20 @@ def add_cache_buster(url: str, attempt: int) -> str:
     return urllib.parse.urlunsplit((split.scheme, split.netloc, split.path, query, split.fragment))
 
 
-def fetch_bytes(url: str) -> bytes:
+def fetch_bytes(url: str, proxy_url: str | None) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with open_url(request, proxy_url) as response:
         status = getattr(response, "status", 200)
         if status < 200 or status >= 300:
             raise RuntimeError(f"{url} HTTP {status}")
         return response.read()
+
+
+def open_url(request: urllib.request.Request, proxy_url: str | None) -> Any:
+    if not proxy_url:
+        return urllib.request.urlopen(request, timeout=30)
+    proxy_handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+    return urllib.request.build_opener(proxy_handler).open(request, timeout=30)
 
 
 def file_url(config: BuildConfig, path_or_url: str) -> str:
@@ -691,6 +719,7 @@ def print_plan(
     table.add_row("文件数", str(len(entries)))
     table.add_row("体积", f"{total_bytes:,} bytes")
     table.add_row("下载源", f"https://{config.cdn_domain}/launcher/{config.remote_channel}/")
+    table.add_row("代理", "显式代理" if config.proxy_url else "环境变量或系统默认")
     table.add_row("zip 根目录", f"R5R Library/{config.install_channel}/")
     table.add_row("optional", "包含" if config.include_optional else "跳过")
     table.add_row("下载后校验", "跳过" if config.skip_download_verify else "启用")

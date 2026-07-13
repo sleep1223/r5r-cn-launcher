@@ -174,7 +174,7 @@ export function HomeTab() {
   // Auto-select the default channel if none is set.
   useEffect(() => {
     if (!settings?.mirror_domain || settings.selected_channel) return;
-    update({ selected_channel: "live_game" });
+    update({ selected_channel: "LIVE" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.mirror_domain, settings?.selected_channel]);
 
@@ -527,7 +527,7 @@ export function HomeTab() {
     ) {
       // Import done → auto-trigger verification.
       setWizardStep(3);
-      const channel = settings?.selected_channel || "live_game";
+      const channel = settings?.selected_channel || "LIVE";
       startRepair(channel)
         .then((id) => beginJob(id, true))
         .catch(() => {});
@@ -931,7 +931,7 @@ export function HomeTab() {
                     <span className="size-1.5 rounded-full border border-white/40" />
                   )}
                   <span>
-                    {channelDisplayName(settings?.selected_channel || "live_game")}
+                    {channelDisplayName(settings?.selected_channel || "LIVE")}
                   </span>
                 </span>
 

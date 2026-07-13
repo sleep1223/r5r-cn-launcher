@@ -26,7 +26,7 @@ fn default_true() -> bool {
 }
 
 /// The only channel we currently serve.
-pub const DEFAULT_CHANNEL: &str = "live_game";
+pub const DEFAULT_CHANNEL: &str = "LIVE";
 
 /// Map a local channel name (e.g. `"LIVE"` from auto-adopt) to the CDN path
 /// segment. Unknown names are lowercased as-is.

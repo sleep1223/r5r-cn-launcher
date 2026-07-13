@@ -76,9 +76,8 @@ pub struct LauncherSettings {
     #[serde(default)]
     pub download_hd_textures: bool,
 
-    /// Whether to start EA App before launching the game and wait briefly for
-    /// its process to appear. Best-effort: a 5s timeout is non-fatal, but if
-    /// EA App can't be started at all (not installed) we abort the launch.
+    /// Whether to start EA App when this launcher starts, then require it to
+    /// be running with a detected login profile before launching the game.
     #[serde(default = "default_launch_via_ea_app")]
     pub launch_via_ea_app: bool,
 }

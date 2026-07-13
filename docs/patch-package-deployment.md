@@ -29,7 +29,22 @@ uv --version
 pnpm patch:build -- --help
 ```
 
-默认下载域名为 `cdn-r5r-org.sleep0.de`，默认远端频道为 `live_game`，默认 zip 内频道目录为 `LIVE`。
+默认下载域名为 `cdn.r5r.org`，默认远端频道为 `live_game`，默认 zip 内频道目录为 `LIVE`。
+
+默认 manifest 地址为 `https://cdn.r5r.org/launcher/live_game/checksums.json`。如果需要通过
+HTTP/HTTPS 代理拉取 manifest 和下载补丁文件，可以显式指定代理：
+
+```powershell
+pnpm patch:build -- --proxy http://127.0.0.1:7890
+```
+
+也可以使用标准环境变量；未传 `--proxy` 时，Python 会自动读取它们：
+
+```powershell
+$env:HTTP_PROXY = "http://127.0.0.1:7890"
+$env:HTTPS_PROXY = "http://127.0.0.1:7890"
+pnpm patch:build
+```
 
 ## 首次缓存当前 manifest
 
@@ -137,7 +152,7 @@ tools/patch-builder/workspace/
 {
   "from_version": "<旧版game_version>",
   "to_version": "<新版game_version>",
-  "url": "https://cdn-r5r-org.sleep0.de/patches/r5r-patch-<旧版>-to-<新版>.zip",
+  "url": "https://cdn.r5r.org/patches/r5r-patch-<旧版>-to-<新版>.zip",
   "checksum": "<补丁zip的sha256>",
   "size": 123456
 }
@@ -146,7 +161,7 @@ tools/patch-builder/workspace/
 `checksum` 和 `size` 会由 `build-report.json` 给出。旧版 dashboard 如暂时不方便返回这两个字段，启动器仍可下载补丁；但提供后启动器会在解压前校验 zip 本身。
 
 4. 确认 dashboard 的 `game_version` 与新版 `checksums.json` 的 `game_version` 一致。
-5. 确认 `https://cdn-r5r-org.sleep0.de/launcher/live_game/checksums.json` 已是新版。
+5. 确认 `https://cdn.r5r.org/launcher/live_game/checksums.json` 已是新版。
 
 ## 客户端使用条件
 

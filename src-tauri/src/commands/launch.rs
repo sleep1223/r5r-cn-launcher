@@ -1,6 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::launch_options::{compose_launch_args, LaunchOptionSelection};
-use crate::process::ea_app::ensure_ea_app_running;
+use crate::process::ea_app::verify_ea_app_ready;
 use crate::process::launch::launch_game;
 use crate::state::LauncherState;
 use std::path::PathBuf;
@@ -32,7 +32,7 @@ pub async fn launch_game_cmd(
     };
 
     if launch_via_ea_app {
-        ensure_ea_app_running().await?;
+        verify_ea_app_ready().await?;
     }
 
     let args = compose_launch_args(&selection);
