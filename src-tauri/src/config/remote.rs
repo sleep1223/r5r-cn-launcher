@@ -37,6 +37,15 @@ fn cdn_path(channel_name: &str) -> String {
     }
 }
 
+/// Canonical on-disk directory for a channel. `live_game` is the CDN/API
+/// identifier for the regular LIVE channel, not a separate local directory.
+pub fn channel_folder_name(channel_name: &str) -> String {
+    match channel_name.to_uppercase().as_str() {
+        "LIVE" | "LIVE_GAME" => "LIVE".to_string(),
+        _ => channel_name.to_uppercase(),
+    }
+}
+
 impl Channel {
     /// Build a `Channel` from a mirror domain and a channel name.
     /// The local `name` is kept as-is (for disk paths), but the CDN URL uses
@@ -57,6 +66,17 @@ impl Channel {
 
     /// Folder name on disk for this channel — `R5R Library/<NAME_UPPERCASE>/`.
     pub fn folder_name(&self) -> String {
-        self.name.to_uppercase()
+        channel_folder_name(&self.name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_api_name_uses_the_live_disk_folder() {
+        assert_eq!(channel_folder_name("live_game"), "LIVE");
+        assert_eq!(channel_folder_name("LIVE"), "LIVE");
     }
 }

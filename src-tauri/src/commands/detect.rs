@@ -112,7 +112,10 @@ pub async fn auto_adopt_existing_install(
     {
         let mut s = state.settings.write();
         s.library_root = crate::util::display_slash(&library_root);
-        if s.selected_channel.is_empty() {
+        if s.selected_channel.is_empty()
+            || crate::config::remote::channel_folder_name(&s.selected_channel)
+                == crate::config::remote::channel_folder_name(&channel_name)
+        {
             s.selected_channel = channel_name.clone();
         }
         let ch = s.channels.entry(channel_name.clone()).or_default();

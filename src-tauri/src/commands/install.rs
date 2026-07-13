@@ -1,3 +1,4 @@
+use crate::config::local_version::read_build_version;
 use crate::config::Channel;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
@@ -190,18 +191,35 @@ pub async fn check_update(
     state: State<'_, LauncherState>,
     channel: String,
 ) -> AppResult<UpdateStatus> {
-    let domain = state.settings.read().mirror_domain.clone();
+    let (domain, install_dir, saved_version) = {
+        let settings = state.settings.read();
+        (
+            settings.mirror_domain.clone(),
+            settings.install_dir_for(&channel),
+            settings
+                .channels
+                .get(&channel)
+                .map(|entry| entry.version.clone())
+                .filter(|version| !version.is_empty()),
+        )
+    };
     let ch = Channel::from_domain(&domain, &channel);
     let client = state.http.read().await.client();
     let manifest = fetch_manifest(&client, &ch).await?;
     let remote_version = manifest.game_version;
-    let local_version = state
-        .settings
-        .read()
-        .channels
-        .get(&channel)
-        .map(|c| c.version.clone())
-        .filter(|v| !v.is_empty());
+    let local_version = match install_dir.as_deref() {
+        Some(dir) => read_build_version(dir, &remote_version).await,
+        None => None,
+    }
+    .or(saved_version);
+    tracing::info!(
+        target: "update",
+        channel = %channel,
+        install_dir = ?install_dir,
+        local_version = ?local_version,
+        remote_version = %remote_version,
+        "checked game version"
+    );
     let has_update = match &local_version {
         Some(lv) => lv != &remote_version,
         None => true,

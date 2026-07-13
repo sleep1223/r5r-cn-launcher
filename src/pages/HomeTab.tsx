@@ -44,6 +44,7 @@ export function HomeTab() {
   const [jobPaused, setJobPaused] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
+  const [localVersion, setLocalVersion] = useState<string | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
   const [serverStats, setServerStats] = useState<{
@@ -84,8 +85,9 @@ export function HomeTab() {
 
   // Auto-adopt: on first mount, check if the official R5Valkyrie launcher has
   // a LIVE install that we haven't adopted yet. If found, the backend writes
-  // library_root + LIVE channel state into our settings — then we reload
-  // settings and auto-trigger a verification so the user is ready to play.
+  // library_root + LIVE channel state into our settings. Reloading settings
+  // then lets the regular update check compare build.txt with the manifest;
+  // do not silently start a full repair before the user sees the update.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -96,15 +98,6 @@ export function HomeTab() {
           // Settings were mutated by the backend — reload them into React
           // state so library_root / channels / selected_channel update.
           await reload();
-          // Auto-trigger a verification (repair) to make sure all files
-          // match the mirror's manifest.
-          try {
-            const id = await startRepair("LIVE");
-            beginJob(id, true);
-          } catch {
-            // If repair fails to start (e.g. mirror URL not set), no big
-            // deal — the user can still configure and run it manually.
-          }
         }
       } catch {
         // Detection is best-effort — failure is silent.
@@ -182,23 +175,31 @@ export function HomeTab() {
   useEffect(() => {
     if (!settings?.selected_channel || !settings?.mirror_domain) {
       setUpdateAvailable(null);
+      setLocalVersion(null);
       return;
     }
-    const installed = settings.channels[settings.selected_channel]?.installed;
-    if (!installed) {
+    if (!settings.library_root) {
       setUpdateAvailable(null);
+      setLocalVersion(null);
       return;
     }
     (async () => {
       try {
         const u = await checkUpdate(settings.selected_channel);
         setUpdateAvailable(u.has_update);
+        setLocalVersion(u.local_version);
         setRemoteVersion(u.remote_version);
       } catch {
         setUpdateAvailable(null);
+        setLocalVersion(null);
       }
     })();
-  }, [settings?.selected_channel, settings?.channels, settings?.mirror_domain]);
+  }, [
+    settings?.selected_channel,
+    settings?.channels,
+    settings?.mirror_domain,
+    settings?.library_root,
+  ]);
 
   // When an install completes, reload settings (so installed/version flips).
   useEffect(() => {
@@ -234,10 +235,11 @@ export function HomeTab() {
     setJobPaused(false);
   };
 
-  const installed =
+  const installedInSettings =
     !!settings &&
     !!settings.selected_channel &&
     !!settings.channels[settings.selected_channel]?.installed;
+  const installed = installedInSettings || localVersion !== null;
 
   // Pick the detected install we'd launch from if the user hit "play" right
   // now. Only consider hits whose `path` directly contains `r5apex.exe` —
@@ -260,6 +262,10 @@ export function HomeTab() {
 
   const action: Action = useMemo(() => {
     if (!settings) return "blocked";
+    // An available update must win over the detected-install launch shortcut;
+    // otherwise the primary button remains "启动游戏" even after the backend
+    // has found an older build.txt.
+    if (installed && updateAvailable) return "update";
     // If we have a detected install that can launch directly, always prefer
     // launching from it over going through install/update flows — the user
     // already has the game on disk, no need to re-download via the mirror.
@@ -272,7 +278,6 @@ export function HomeTab() {
     }
     if (!settings.selected_channel) return "blocked";
     if (!installed) return "install";
-    if (updateAvailable) return "update";
     return "play";
   }, [settings, detected, launchableDetected, installed, updateAvailable]);
 
@@ -939,7 +944,8 @@ export function HomeTab() {
                 {installed && (
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-400/20 font-mono">
                     <span className="text-white/45 font-sans">本地</span>
-                    {settings.channels[settings.selected_channel]?.version ||
+                    {localVersion ||
+                      settings.channels[settings.selected_channel]?.version ||
                       "—"}
                   </span>
                 )}

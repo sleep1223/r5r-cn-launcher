@@ -1,3 +1,4 @@
+use crate::config::local_version::read_build_version;
 use crate::config::{Channel, UpdateStrategy};
 use crate::dashboard::fetch_dashboard_config;
 use crate::download::chunk::download_chunked;
@@ -15,7 +16,6 @@ use crate::verify::sha256_file;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use reqwest::Client;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -126,9 +126,11 @@ pub async fn run_install(
     let client: Client = state.http.read().await.client();
 
     // 2. Resolve install dir.
-    let install_dir = PathBuf::from(&library_root)
-        .join("R5R Library")
-        .join(channel_name.to_uppercase());
+    let install_dir = state
+        .settings
+        .read()
+        .install_dir_for(&channel_name)
+        .ok_or_else(|| AppError::settings("尚未配置安装根目录"))?;
     tokio::fs::create_dir_all(&install_dir).await?;
     emit_log(
         &app,
@@ -167,13 +169,18 @@ pub async fn run_install(
 
     // 4. Version check (Update mode only).
     if mode == InstallMode::Update {
-        let local_version = state
+        let saved_version = state
             .settings
             .read()
             .channels
             .get(&channel.name)
             .map(|c| c.version.clone())
             .unwrap_or_default();
+        let local_version = match remote_version.as_deref() {
+            Some(rv) => read_build_version(&install_dir, rv).await,
+            None => None,
+        }
+        .unwrap_or(saved_version);
         if let Some(rv) = &remote_version {
             if !local_version.is_empty() && local_version == *rv {
                 emit_log(

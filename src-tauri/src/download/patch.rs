@@ -47,17 +47,19 @@ pub async fn apply_patch(
     }
 
     // 1. Look up an applicable patch entry.
-    let (dashboard_url, library_root, download_hd_textures) = {
+    let (dashboard_url, library_root, install_dir, download_hd_textures) = {
         let s = state.settings.read();
         (
             s.dashboard_api_url.clone(),
             s.library_root.clone(),
+            s.install_dir_for(channel_name),
             s.download_hd_textures,
         )
     };
     if library_root.is_empty() {
         return Err(AppError::settings("尚未配置安装根目录"));
     }
+    let install_dir = install_dir.ok_or_else(|| AppError::settings("尚未配置安装根目录"))?;
     let client: Client = state.http.read().await.client();
 
     emit_downloading(app, job_id, 0, 0, 0, "拉取补丁元数据 …");
@@ -88,12 +90,16 @@ pub async fn apply_patch(
         let _ = std::fs::remove_file(&tmp_zip);
         return Ok(PatchOutcome::NotApplicable);
     }
+    let install_channel = install_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::InvalidPath("无法识别游戏频道目录".into()))?;
     extract_keep_prefixes(
         app,
         job_id,
         &tmp_zip,
         &lib_path,
-        channel_name,
+        install_channel,
         total_bytes,
         file_count,
         cancel.clone(),
@@ -106,8 +112,7 @@ pub async fn apply_patch(
     //    the normal verify/download pipeline, which repairs the partial state.
     emit_downloading(app, job_id, 0, 0, 0, "校验补丁包结果 …");
     verify_patched_install(
-        &lib_path,
-        channel_name,
+        &install_dir,
         target_manifest,
         download_hd_textures,
         cancel.clone(),
@@ -131,15 +136,11 @@ pub async fn apply_patch(
 }
 
 async fn verify_patched_install(
-    library_root: &Path,
-    channel_name: &str,
+    install_dir: &Path,
     manifest: &GameManifest,
     download_hd_textures: bool,
     cancel: CancellationToken,
 ) -> AppResult<()> {
-    let install_dir = library_root
-        .join("R5R Library")
-        .join(channel_name.to_uppercase());
     let languages_wanted = ["schinese"];
 
     for entry in manifest.files.iter().filter(|entry| {
@@ -158,7 +159,7 @@ async fn verify_patched_install(
         if entry.checksum.is_empty() {
             continue;
         }
-        let local = entry_local_path(&install_dir, &entry.path);
+        let local = entry_local_path(install_dir, &entry.path);
         if !local.exists() {
             return Err(AppError::Verification {
                 path: entry.path.clone(),

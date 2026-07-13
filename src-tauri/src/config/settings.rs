@@ -181,10 +181,19 @@ impl LauncherSettings {
         if self.library_root.is_empty() {
             return None;
         }
-        Some(
-            PathBuf::from(&self.library_root)
-                .join("R5R Library")
-                .join(channel_name.to_uppercase()),
-        )
+        let library = PathBuf::from(&self.library_root).join("R5R Library");
+        let canonical = library.join(crate::config::remote::channel_folder_name(channel_name));
+        if canonical.exists() {
+            return Some(canonical);
+        }
+
+        // v0.36.1 could create LIVE_GAME because the CDN channel identifier
+        // was used as the local directory name. Keep that install usable when
+        // it really exists, while preferring the official LIVE directory.
+        let legacy = library.join(channel_name.to_uppercase());
+        if legacy != canonical && legacy.exists() {
+            return Some(legacy);
+        }
+        Some(canonical)
     }
 }
