@@ -33,6 +33,32 @@ pub fn parse_build_version(contents: &str, remote_version: &str) -> Option<Strin
     Some(format!("{}{}", build, suffix))
 }
 
+/// Convert the dashboard's display version (`v2.6.51`) into the manifest and
+/// patch version shape (`2.6.51-live`), borrowing the channel suffix from the
+/// manifest returned for that release.
+pub fn normalize_community_version(
+    community_version: &str,
+    manifest_version: &str,
+) -> Option<String> {
+    let trimmed = community_version.trim();
+    let version = trimmed
+        .strip_prefix('v')
+        .or_else(|| trimmed.strip_prefix('V'))
+        .unwrap_or(trimmed)
+        .trim();
+    if version.is_empty() {
+        return None;
+    }
+    if version.contains('-') {
+        return Some(version.to_string());
+    }
+    let suffix = manifest_version
+        .find('-')
+        .map(|index| &manifest_version[index..])
+        .unwrap_or_default();
+    Some(format!("{}{}", version, suffix))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,5 +82,13 @@ mod tests {
     #[test]
     fn rejects_an_unrelated_build_marker() {
         assert_eq!(parse_build_version("2.6.42", "2.6.51-live"), None);
+    }
+
+    #[test]
+    fn normalizes_dashboard_version_for_patch_matching() {
+        assert_eq!(
+            normalize_community_version("v2.6.51", "2.6.51-live"),
+            Some("2.6.51-live".to_string())
+        );
     }
 }

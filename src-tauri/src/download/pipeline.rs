@@ -1,4 +1,4 @@
-use crate::config::local_version::read_build_version;
+use crate::config::local_version::{normalize_community_version, read_build_version};
 use crate::config::{Channel, UpdateStrategy};
 use crate::dashboard::fetch_dashboard_config;
 use crate::download::chunk::download_chunked;
@@ -10,7 +10,9 @@ use crate::error::{AppError, AppResult};
 use crate::events::{
     InstallLogEvent, InstallPhase, LogLevel, ProgressEvent, EVT_INSTALL_LOG, EVT_INSTALL_PROGRESS,
 };
-use crate::manifest::{fetch_manifest, is_language_match, is_user_generated, ManifestEntry};
+use crate::manifest::{
+    fetch_manifest_for_version, is_language_match, is_user_generated, ManifestEntry,
+};
 use crate::state::{LauncherState, PauseState};
 use crate::verify::sha256_file;
 use futures::stream::FuturesUnordered;
@@ -125,6 +127,22 @@ pub async fn run_install(
 
     let client: Client = state.http.read().await.client();
 
+    // In patch mode the dashboard's community version is authoritative. Use
+    // it as a stable cache key for checksums.json so a newly published release
+    // does not reuse the previous version's CDN object.
+    let community_version =
+        if mode == InstallMode::Update && update_strategy == UpdateStrategy::Patch {
+            let version = fetch_dashboard_config(&client, &dashboard_url)
+                .await?
+                .game_version;
+            if version.trim().is_empty() {
+                return Err(AppError::Manifest("社区服版本号为空".into()));
+            }
+            Some(version)
+        } else {
+            None
+        };
+
     // 2. Resolve install dir.
     let install_dir = state
         .settings
@@ -149,13 +167,29 @@ pub async fn run_install(
             emit(InstallPhase::Cancelled);
             return Err(AppError::Cancelled);
         }
-        r = fetch_manifest(&client, &channel) => r?,
+        r = fetch_manifest_for_version(&client, &channel, community_version.as_deref()) => r?,
     };
-    let remote_version = if manifest.game_version.is_empty() {
+    let manifest_version = manifest.game_version.clone();
+    let remote_version = if manifest_version.is_empty() {
         None
+    } else if update_strategy == UpdateStrategy::Patch {
+        Some(
+            community_version
+                .as_deref()
+                .and_then(|version| normalize_community_version(version, &manifest_version))
+                .unwrap_or_else(|| manifest_version.clone()),
+        )
     } else {
-        Some(manifest.game_version.clone())
+        Some(manifest_version.clone())
     };
+    if let Some(remote) = remote_version.as_deref() {
+        if update_strategy == UpdateStrategy::Patch && remote != manifest_version {
+            return Err(AppError::Manifest(format!(
+                "社区版本 {} 与 checksums.json 版本 {} 不一致，请先同步目标清单",
+                remote, manifest_version
+            )));
+        }
+    }
     emit_log(
         &app,
         &job_id,

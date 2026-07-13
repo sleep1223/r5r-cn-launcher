@@ -32,6 +32,14 @@ import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
 
 type Action = "install" | "update" | "play" | "blocked";
 
+const formatGameVersion = (version: string | null | undefined) => {
+  const normalized = version
+    ?.trim()
+    .replace(/^v/i, "")
+    .replace(/-live$/i, "");
+  return normalized ? `v${normalized}` : "—";
+};
+
 export function HomeTab() {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
@@ -944,21 +952,22 @@ export function HomeTab() {
                 {installed && (
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-400/20 font-mono">
                     <span className="text-white/45 font-sans">本地</span>
-                    {localVersion ||
-                      settings.channels[settings.selected_channel]?.version ||
-                      "—"}
+                    {formatGameVersion(
+                      localVersion ||
+                        settings.channels[settings.selected_channel]?.version,
+                    )}
                   </span>
                 )}
                 {remoteVersion && (
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-white/65 border border-white/10 font-mono">
                     <span className="text-white/40 font-sans">远端</span>
-                    {remoteVersion}
+                    {formatGameVersion(remoteVersion)}
                   </span>
                 )}
                 {dashboard?.game_version && (
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-500/10 text-blue-300 border border-blue-400/20 font-mono">
                     <span className="text-white/45 font-sans">社区服</span>
-                    {dashboard.game_version}
+                    {formatGameVersion(dashboard.game_version)}
                   </span>
                 )}
                 {installed && updateAvailable && (
