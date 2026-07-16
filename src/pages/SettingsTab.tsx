@@ -55,7 +55,7 @@ export function SettingsTab() {
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
   const [mirrorDomain, setMirrorDomain] = useState("");
-  const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("verify");
+  const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("patch");
   const [downloadHdTextures, setDownloadHdTextures] = useState(false);
   const [launchViaEaApp, setLaunchViaEaApp] = useState(true);
   const [libraryRoot, setLibraryRoot] = useState("");
@@ -392,10 +392,10 @@ export function SettingsTab() {
         <SectionHeader
           icon="↻"
           title="更新方式"
-          subtitle="点击「更新」时如何处理已变化的文件。默认使用「校验」对所有文件做 SHA-256 校验后按需下载。"
+          subtitle="点击「更新」时如何处理已变化的文件。默认优先使用体积更小、速度更快的补丁包。"
         />
         <div className="flex gap-2">
-          {(["verify", "patch"] as const).map((s) => (
+          {(["patch", "verify"] as const).map((s) => (
             <button
               key={s}
               type="button"
@@ -406,13 +406,13 @@ export function SettingsTab() {
                   : "border-white/10 text-white/60 hover:bg-white/5"
               }`}
             >
-              {s === "verify" ? "校验（推荐）" : "补丁包"}
+              {s === "patch" ? "补丁包（推荐）" : "完整校验"}
             </button>
           ))}
         </div>
         {updateStrategy === "patch" && (
           <div className="text-xs text-white/50 mt-2">
-            注：补丁包仅支持单跳（本地版本 → 远端版本），未找到匹配路径时会自动回退到完整校验。
+            补丁包仅支持从当前版本直接更新到最新版本；没有匹配的补丁时，将自动切换为完整校验。
           </div>
         )}
       </GlassCard>

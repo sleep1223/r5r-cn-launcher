@@ -146,6 +146,20 @@ mod tests {
     }
 
     #[test]
+    fn multiple_emits_flag_when_enabled() {
+        let mut items = HashMap::new();
+        items.insert(
+            "multiple".to_string(),
+            SelectionEntry {
+                enabled: true,
+                value: None,
+            },
+        );
+        let args = compose_launch_args(&LaunchOptionSelection { items });
+        assert!(args.iter().any(|arg| arg == "-multiple"));
+    }
+
+    #[test]
     fn resolution_emits_w_and_h() {
         let mut items = HashMap::new();
         items.insert(

@@ -207,6 +207,7 @@ export function HomeTab() {
     settings?.channels,
     settings?.mirror_domain,
     settings?.library_root,
+    settings?.update_strategy,
   ]);
 
   // When an install completes, reload settings (so installed/version flips).

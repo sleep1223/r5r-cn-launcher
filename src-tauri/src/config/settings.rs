@@ -16,8 +16,8 @@ pub const CURRENT_SCHEMA: u32 = 1;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateStrategy {
-    #[default]
     Verify,
+    #[default]
     Patch,
 }
 
@@ -195,5 +195,18 @@ impl LauncherSettings {
             return Some(legacy);
         }
         Some(canonical)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patch_is_the_default_update_strategy() {
+        assert_eq!(
+            LauncherSettings::default().update_strategy,
+            UpdateStrategy::Patch
+        );
     }
 }

@@ -70,6 +70,18 @@ static CATALOG: Lazy<LaunchOptionCatalog> = Lazy::new(|| {
             conflicts_with: &[],
         },
         OptionEntry {
+            id: "multiple",
+            category: "language",
+            kind: OptionKind::Toggle { args: &["-multiple"], is_combo: false },
+            default_enabled: false,
+            default_value: None,
+            label_zh: "允许与本体同时运行",
+            description_zh:
+                "添加 -multiple 后，社区服可与 Apex Legends 本体同时运行。本体也必须添加 -multiple 启动项，多开才能生效。",
+            risk: RiskLevel::None,
+            conflicts_with: &[],
+        },
+        OptionEntry {
             id: "softened_locale",
             category: "language",
             kind: OptionKind::Toggle { args: &["+cl_is_softened_locale", "1"], is_combo: false },

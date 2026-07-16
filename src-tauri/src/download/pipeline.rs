@@ -130,18 +130,18 @@ pub async fn run_install(
     // In patch mode the dashboard's community version is authoritative. Use
     // it as a stable cache key for checksums.json so a newly published release
     // does not reuse the previous version's CDN object.
-    let community_version =
-        if mode == InstallMode::Update && update_strategy == UpdateStrategy::Patch {
-            let version = fetch_dashboard_config(&client, &dashboard_url)
-                .await?
-                .game_version;
-            if version.trim().is_empty() {
-                return Err(AppError::Manifest("社区服版本号为空".into()));
-            }
-            Some(version)
-        } else {
-            None
-        };
+    let is_patch_update = mode == InstallMode::Update && update_strategy == UpdateStrategy::Patch;
+    let community_version = if is_patch_update {
+        let version = fetch_dashboard_config(&client, &dashboard_url)
+            .await?
+            .game_version;
+        if version.trim().is_empty() {
+            return Err(AppError::Manifest("社区服版本号为空".into()));
+        }
+        Some(version)
+    } else {
+        None
+    };
 
     // 2. Resolve install dir.
     let install_dir = state
@@ -172,7 +172,7 @@ pub async fn run_install(
     let manifest_version = manifest.game_version.clone();
     let remote_version = if manifest_version.is_empty() {
         None
-    } else if update_strategy == UpdateStrategy::Patch {
+    } else if is_patch_update {
         Some(
             community_version
                 .as_deref()
@@ -183,7 +183,7 @@ pub async fn run_install(
         Some(manifest_version.clone())
     };
     if let Some(remote) = remote_version.as_deref() {
-        if update_strategy == UpdateStrategy::Patch && remote != manifest_version {
+        if is_patch_update && remote != manifest_version {
             return Err(AppError::Manifest(format!(
                 "社区版本 {} 与 checksums.json 版本 {} 不一致，请先同步目标清单",
                 remote, manifest_version
@@ -230,7 +230,7 @@ pub async fn run_install(
             // covers exactly `local_version → remote_version`. On success
             // we're done; if the dashboard has no matching patch, we log and
             // fall through to the full verify pipeline below.
-            if update_strategy == UpdateStrategy::Patch && !local_version.is_empty() {
+            if is_patch_update && !local_version.is_empty() {
                 emit_log(
                     &app,
                     &job_id,

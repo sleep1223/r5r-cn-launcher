@@ -208,33 +208,30 @@ pub async fn check_update(
     };
     let ch = Channel::from_domain(&domain, &channel);
     let client = state.http.read().await.client();
-    let community_version = if update_strategy == UpdateStrategy::Patch {
+    let remote_version = if update_strategy == UpdateStrategy::Patch {
         let version = fetch_dashboard_config(&client, &dashboard_url)
             .await?
             .game_version;
         if version.trim().is_empty() {
             return Err(AppError::Manifest("社区服版本号为空".into()));
         }
-        Some(version)
-    } else {
-        None
-    };
-    let manifest = fetch_manifest_for_version(&client, &ch, community_version.as_deref()).await?;
-    let manifest_version = manifest.game_version;
-    let remote_version = if update_strategy == UpdateStrategy::Patch {
-        community_version
+
+        // Automatic checks in patch mode must not depend on checksums.json:
+        // that CDN object may still contain the previous official version.
+        // Prefer the persisted suffix (normally `-live`), falling back to the
+        // selected channel's canonical on-disk name for a fresh adoption.
+        let channel_reference = format!("0-{}", ch.folder_name().to_ascii_lowercase());
+        let suffix_reference = saved_version
             .as_deref()
-            .and_then(|version| normalize_community_version(version, &manifest_version))
-            .unwrap_or_else(|| manifest_version.clone())
+            .filter(|saved| saved.contains('-'))
+            .unwrap_or(&channel_reference);
+        normalize_community_version(&version, suffix_reference)
+            .ok_or_else(|| AppError::Manifest("社区服版本号格式无效".into()))?
     } else {
-        manifest_version.clone()
+        fetch_manifest_for_version(&client, &ch, None)
+            .await?
+            .game_version
     };
-    if update_strategy == UpdateStrategy::Patch && remote_version != manifest_version {
-        return Err(AppError::Manifest(format!(
-            "社区版本 {} 与 checksums.json 版本 {} 不一致，请先同步目标清单",
-            remote_version, manifest_version
-        )));
-    }
     let local_version = match install_dir.as_deref() {
         Some(dir) => read_build_version(dir, &remote_version).await,
         None => None,
