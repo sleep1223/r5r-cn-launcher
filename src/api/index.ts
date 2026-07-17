@@ -7,14 +7,23 @@ async function get<T>(path: string, headers?: Record<string, string>): Promise<T
   const resp = await fetch(`${BASE}${path}`, { headers });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json = await resp.json();
-  return json?.data ?? json;
+  if (json?.code !== undefined && json.code !== "0000" && json.code !== 0) {
+    throw new Error(json?.msg || `业务错误 ${json.code}`);
+  }
+  return json && Object.prototype.hasOwnProperty.call(json, "data")
+    ? json.data
+    : json;
 }
 
 /** Like get() but returns the full envelope (for endpoints where summary/total sit alongside data). */
 async function getFull<T>(path: string, headers?: Record<string, string>): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { headers });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json();
+  const json = await resp.json();
+  if (json?.code !== undefined && json.code !== "0000" && json.code !== 0) {
+    throw new Error(json?.msg || `业务错误 ${json.code}`);
+  }
+  return json;
 }
 
 async function post<T>(path: string, headers?: Record<string, string>): Promise<T> {
@@ -22,6 +31,23 @@ async function post<T>(path: string, headers?: Record<string, string>): Promise<
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json = await resp.json();
   return json?.data ?? json;
+}
+
+async function jsonRequest<T>(
+  path: string,
+  init: RequestInit,
+): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, init);
+  const json = await resp.json().catch(() => null);
+  if (
+    !resp.ok ||
+    (json?.code !== undefined && json.code !== "0000" && json.code !== 0)
+  ) {
+    throw new Error(json?.msg || `HTTP ${resp.status}`);
+  }
+  return json && Object.prototype.hasOwnProperty.call(json, "data")
+    ? json.data
+    : json;
 }
 
 // ===== Types =====
@@ -125,6 +151,41 @@ export interface TeamJoinResult {
   notify_members: MemberInfo[] | null;
 }
 
+export type GameConfigSourceGame = "apex" | "r5";
+export type GameConfigInputDevice = "mouse_keyboard" | "controller";
+
+export interface GameConfigPresetSummary {
+  id: number;
+  creator_name: string;
+  name: string;
+  remark: string | null;
+  source_game: GameConfigSourceGame;
+  has_mouse: boolean;
+  has_controller: boolean;
+  has_fov: boolean;
+  schema_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GameConfigPreset extends GameConfigPresetSummary {
+  content: string;
+}
+
+export interface GameConfigPresetPage {
+  data: GameConfigPresetSummary[];
+  total: number;
+  page_no?: number;
+  page_size?: number;
+}
+
+export interface SaveGameConfigPreset {
+  name: string;
+  remark?: string | null;
+  source_game: GameConfigSourceGame;
+  content: string;
+}
+
 // ===== Endpoints =====
 
 export const getServers = () => get<ServerListItem[]>("/v1/r5/server");
@@ -185,3 +246,40 @@ export const cancelTeam = (appKey: string, teamId: number) =>
 
 export const leaveTeam = (appKey: string, teamId: number) =>
   post<null>(`/v1/r5/teams/app/${teamId}/leave`, { "X-App-Key": appKey });
+
+export const getGameConfigPresets = (p?: {
+  q?: string;
+  input_device?: GameConfigInputDevice;
+  page_no?: number;
+  page_size?: number;
+}) =>
+  getFull<GameConfigPresetPage>(
+    `/v1/r5/launcher/game-configs${qs({ ...p })}`,
+  );
+
+export const getGameConfigPreset = (id: number) =>
+  get<GameConfigPreset>(`/v1/r5/launcher/game-configs/${id}`);
+
+export const getMyGameConfigPreset = (appKey: string) =>
+  get<GameConfigPreset>("/v1/r5/launcher/game-configs/mine", {
+    "X-App-Key": appKey,
+  });
+
+export const saveMyGameConfigPreset = (
+  appKey: string,
+  payload: SaveGameConfigPreset,
+) =>
+  jsonRequest<GameConfigPreset>("/v1/r5/launcher/game-configs/mine", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-App-Key": appKey,
+    },
+    body: JSON.stringify(payload),
+  });
+
+export const deleteMyGameConfigPreset = (appKey: string) =>
+  jsonRequest<null>("/v1/r5/launcher/game-configs/mine", {
+    method: "DELETE",
+    headers: { "X-App-Key": appKey },
+  });

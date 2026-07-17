@@ -1,5 +1,6 @@
 pub mod accelerator;
 pub mod config;
+pub mod config_sync;
 pub mod dashboard;
 pub mod detect;
 pub mod install;

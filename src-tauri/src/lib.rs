@@ -1,6 +1,7 @@
 pub mod accelerator;
 pub mod commands;
 pub mod config;
+pub mod config_sync;
 pub mod dashboard;
 pub mod detect;
 pub mod download;
@@ -179,6 +180,15 @@ pub fn run() {
             commands::install::check_update,
             commands::updater::get_launcher_version,
             commands::updater::download_and_apply_update,
+            commands::config_sync::scan_game_configs,
+            commands::config_sync::generate_game_config_content,
+            commands::config_sync::preview_game_config_apply,
+            commands::config_sync::apply_game_config,
+            commands::config_sync::create_game_config_backup,
+            commands::config_sync::list_game_config_backups,
+            commands::config_sync::delete_game_config_backup,
+            commands::config_sync::restore_game_config_backup,
+            commands::config_sync::restore_latest_game_config_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

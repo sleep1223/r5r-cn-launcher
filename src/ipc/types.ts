@@ -163,6 +163,112 @@ export interface LaunchExitedEvent {
   success: boolean;
 }
 
+// ===== Apex / R5 config sync =====
+
+export type ConfigGame = "apex" | "r5";
+export type ConfigSection = "mouse_keyboard" | "controller" | "fov";
+export type PreviewStatus = "replace" | "unchanged" | "missing";
+
+export interface ConfigEntryState {
+  key: string;
+  label: string;
+  section: ConfigSection;
+  present: boolean;
+  value: string | null;
+  values: string[];
+  locations: string[];
+  conflict: boolean;
+}
+
+export interface ConfigFileFingerprint {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface GameConfigSnapshot {
+  game: ConfigGame;
+  detected: boolean;
+  root_path: string;
+  files: ConfigFileFingerprint[];
+  entries: ConfigEntryState[];
+}
+
+export interface ConfigComparison {
+  apex: GameConfigSnapshot;
+  r5: GameConfigSnapshot;
+}
+
+export interface GeneratedConfigContent {
+  source_game: ConfigGame;
+  content: string;
+  keys: string[];
+  has_mouse: boolean;
+  has_controller: boolean;
+  has_fov: boolean;
+}
+
+export interface ApplyPreviewItem {
+  key: string;
+  label: string;
+  section: ConfigSection;
+  desired: string;
+  current_values: string[];
+  status: PreviewStatus;
+}
+
+export interface TargetApplyPreview {
+  game: ConfigGame;
+  files: ConfigFileFingerprint[];
+  replace_count: number;
+  unchanged_count: number;
+  missing_count: number;
+  conflict_count: number;
+  items: ApplyPreviewItem[];
+}
+
+export interface ConfigApplyPreview {
+  content_sha256: string;
+  selected_keys: string[];
+  targets: TargetApplyPreview[];
+}
+
+export interface ApplyConfigRequest {
+  content: string;
+  selected_keys: string[];
+  target_games: ConfigGame[];
+  expected_preview: ConfigApplyPreview;
+  source_label: string;
+}
+
+export interface ApplyTargetResult {
+  game: ConfigGame;
+  replaced: number;
+  unchanged: number;
+  missing: number;
+  backup_id: string | null;
+}
+
+export interface ConfigApplyResult {
+  targets: ApplyTargetResult[];
+}
+
+export interface BackupFileRecord {
+  relative_path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface ConfigBackupRecord {
+  id: string;
+  game: ConfigGame;
+  created_at_ms: number;
+  label: string;
+  operation_source: string;
+  files: BackupFileRecord[];
+  total_size: number;
+}
+
 export type InstallPhase =
   | { phase: "preparing" }
   | { phase: "fetching_manifest" }

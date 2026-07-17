@@ -8,6 +8,7 @@ import { ProfileTab } from "./pages/ProfileTab";
 import { LaunchOptionsTab } from "./pages/LaunchOptionsTab";
 import { SettingsTab } from "./pages/SettingsTab";
 import { AboutTab } from "./pages/AboutTab";
+import { ConfigSyncTab } from "./pages/ConfigSyncTab";
 import { SettingsProvider } from "./hooks/useSettings";
 import { AuthProvider } from "./hooks/useAuth";
 import { fetchDashboardConfig } from "./ipc/dashboard";
@@ -101,6 +102,7 @@ function App() {
             {tab === "teams" && <TeamsTab />}
             {tab === "profile" && <ProfileTab />}
             {tab === "launch_options" && <LaunchOptionsTab />}
+            {tab === "config_sync" && <ConfigSyncTab />}
             {tab === "settings" && <SettingsTab />}
             {tab === "about" && (
               <AboutTab
