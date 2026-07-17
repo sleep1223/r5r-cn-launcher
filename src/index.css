@@ -69,6 +69,7 @@ body {
 
 /* Inputs */
 input[type="text"],
+input[type="password"],
 input[type="url"],
 input[type="number"],
 select,

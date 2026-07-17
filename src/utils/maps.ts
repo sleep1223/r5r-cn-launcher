@@ -84,3 +84,11 @@ export const countryName = (code?: string | null): string => {
     return code;
   }
 };
+
+export const countryFlag = (code?: string | null): string => {
+  const normalized = code?.trim().toUpperCase() ?? "";
+  if (!/^[A-Z]{2}$/.test(normalized)) return "🌐";
+  return String.fromCodePoint(
+    ...[...normalized].map((char) => 127397 + char.charCodeAt(0)),
+  );
+};

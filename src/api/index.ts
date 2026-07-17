@@ -58,6 +58,16 @@ export interface PlayerInServer {
   region?: string | null;
 }
 
+export type InputDevice = "controller" | "keyboard_mouse" | "unknown";
+
+export type StatsTimeRange =
+  | "today"
+  | "yesterday"
+  | "week"
+  | "last_week"
+  | "month"
+  | "all";
+
 export interface ServerListItem {
   name: string;
   short_name?: string;
@@ -79,6 +89,7 @@ export interface ServerListItem {
 export interface KdRecord {
   name: string;
   nucleus_id?: number;
+  input_device?: InputDevice | null;
   kills: number;
   deaths: number;
   kd: number;
@@ -88,6 +99,7 @@ export interface WeaponLeaderboardRecord {
   weapon: string;
   name: string;
   nucleus_id?: number;
+  input_device?: InputDevice | null;
   kills: number;
   deaths: number;
   kd: number;
@@ -95,6 +107,7 @@ export interface WeaponLeaderboardRecord {
 
 export interface WeaponRecord {
   weapon: string;
+  input_device?: InputDevice | null;
   kills: number;
   deaths: number;
   kd: number;
@@ -103,6 +116,7 @@ export interface WeaponRecord {
 export interface PlayerVsAllRecord {
   opponent_name: string;
   opponent_id?: number;
+  input_device?: InputDevice | null;
   kills: number;
   deaths: number;
   kd: number;
@@ -214,7 +228,12 @@ export const getWeaponLeaderboard = (p?: LeaderboardParams) =>
 
 export const getPlayerVsAll = (
   name: string,
-  p?: { page_no?: number; page_size?: number; sort?: string },
+  p?: {
+    page_no?: number;
+    page_size?: number;
+    sort?: string;
+    range?: StatsTimeRange;
+  },
 ) =>
   getFull<{ data: PlayerVsAllRecord[]; summary?: PlayerVsAllSummary; total?: number }>(
     `/v1/r5/players/${encodeURIComponent(name)}/vs_all${qs({ ...p })}`,
@@ -222,7 +241,12 @@ export const getPlayerVsAll = (
 
 export const getPlayerWeapons = (
   name: string,
-  p?: { page_no?: number; page_size?: number; sort?: string },
+  p?: {
+    page_no?: number;
+    page_size?: number;
+    sort?: string;
+    range?: StatsTimeRange;
+  },
 ) => get<WeaponRecord[]>(`/v1/r5/players/${encodeURIComponent(name)}/weapons${qs({ ...p })}`);
 
 export const getUserMe = (appKey: string) =>

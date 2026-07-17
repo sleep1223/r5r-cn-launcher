@@ -6,6 +6,7 @@ import {
   KdRecord,
   WeaponLeaderboardRecord,
 } from "../api";
+import { InputDeviceBadge } from "../components/InputDeviceBadge";
 import { weaponName } from "../utils/maps";
 
 type TimeRange = "today" | "yesterday" | "week" | "month" | "all";
@@ -104,6 +105,7 @@ export function LeaderboardTab() {
                 <tr className="text-white/40 text-[11px] border-b border-white/5">
                   <th className="text-left py-2 px-2 w-12">#</th>
                   <th className="text-left py-2 px-2">玩家</th>
+                  <th className="text-left py-2 px-2">输入设备</th>
                   <th className="text-right py-2 px-2">击杀</th>
                   <th className="text-right py-2 px-2">死亡</th>
                   <th className="text-right py-2 px-2">K/D</th>
@@ -112,7 +114,7 @@ export function LeaderboardTab() {
               <tbody>
                 {killData.map((r, i) => (
                   <tr
-                    key={r.name}
+                    key={`${r.nucleus_id ?? r.name}-${r.input_device ?? "unknown"}`}
                     className="border-b border-white/[0.03] hover:bg-white/[0.03]"
                   >
                     <td className="py-2 px-2">
@@ -120,6 +122,9 @@ export function LeaderboardTab() {
                     </td>
                     <td className="py-2 px-2 font-mono text-white/90">
                       {r.name}
+                    </td>
+                    <td className="py-2 px-2">
+                      <InputDeviceBadge device={r.input_device} compact />
                     </td>
                     <td className="py-2 px-2 text-right text-emerald-300 tabular-nums">
                       {r.kills}
@@ -154,6 +159,7 @@ export function LeaderboardTab() {
                   <th className="text-left py-2 px-2 w-12">#</th>
                   <th className="text-left py-2 px-2">武器</th>
                   <th className="text-left py-2 px-2">玩家</th>
+                  <th className="text-left py-2 px-2">输入设备</th>
                   <th className="text-right py-2 px-2">击杀</th>
                   <th className="text-right py-2 px-2">死亡</th>
                   <th className="text-right py-2 px-2">K/D</th>
@@ -162,7 +168,7 @@ export function LeaderboardTab() {
               <tbody>
                 {weaponData.map((r, i) => (
                   <tr
-                    key={`${r.weapon}-${r.name}`}
+                    key={`${r.weapon}-${r.nucleus_id ?? r.name}-${r.input_device ?? "unknown"}`}
                     className="border-b border-white/[0.03] hover:bg-white/[0.03]"
                   >
                     <td className="py-2 px-2">
@@ -171,6 +177,9 @@ export function LeaderboardTab() {
                     <td className="py-2 px-2 text-white/70">{weaponName(r.weapon)}</td>
                     <td className="py-2 px-2 font-mono text-white/90">
                       {r.name}
+                    </td>
+                    <td className="py-2 px-2">
+                      <InputDeviceBadge device={r.input_device} compact />
                     </td>
                     <td className="py-2 px-2 text-right text-emerald-300 tabular-nums">
                       {r.kills}

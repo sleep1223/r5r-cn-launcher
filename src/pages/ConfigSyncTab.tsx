@@ -1042,7 +1042,7 @@ function UploadManager({
   if (!appKey) {
     return (
       <GlassCard>
-        <EmptyState text="上传配置需要先使用 AppKey 登录；可在「组队」页面完成登录。" />
+        <EmptyState text="上传配置需要先使用 AppKey 登录；请点击左下角的「登录」。" />
       </GlassCard>
     );
   }

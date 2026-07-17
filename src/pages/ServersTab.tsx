@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components/GlassCard";
-import { getServers, ServerListItem } from "../api";
-import { gamemodeName, mapName, countryName } from "../utils/maps";
+import { getServers, PlayerInServer, ServerListItem } from "../api";
+import {
+  countryFlag,
+  countryName,
+  gamemodeName,
+  mapName,
+} from "../utils/maps";
 import { pingHost, PingResult } from "../ipc/ping";
 
 type PingState = { status: "pending" } | { status: "done"; result: PingResult };
 
-const serverKey = (sv: ServerListItem) => `${sv.name}-${sv.ip}-${sv.port}`;
+const serverKey = (sv: ServerListItem) =>
+  [sv.short_name, sv.name, sv.map, sv.region, sv.country, sv.ip, sv.port]
+    .filter((value) => value !== null && value !== undefined)
+    .join("|");
 const serverAddr = (sv: ServerListItem): { ip: string; port: number } | null => {
   const ip = (sv.ip ?? "").trim();
   const port = sv.port ?? 0;
@@ -20,10 +28,46 @@ function pingColor(ms: number) {
   return "text-red-300";
 }
 
+interface PlayerCountryGroup {
+  key: string;
+  code: string | null;
+  label: string;
+  players: PlayerInServer[];
+}
+
+function groupPlayersByCountry(players: PlayerInServer[]): PlayerCountryGroup[] {
+  const groups = new Map<string, PlayerInServer[]>();
+  for (const player of players) {
+    const code = player.country?.trim().toUpperCase() || "__UNKNOWN__";
+    const group = groups.get(code) ?? [];
+    group.push(player);
+    groups.set(code, group);
+  }
+
+  return [...groups.entries()]
+    .map(([key, groupedPlayers]) => {
+      const code = key === "__UNKNOWN__" ? null : key;
+      return {
+        key,
+        code,
+        label: code ? countryName(code) || code : "未知国家",
+        players: groupedPlayers.sort((a, b) => a.name.localeCompare(b.name)),
+      };
+    })
+    .sort((a, b) => {
+      if (a.code === null) return 1;
+      if (b.code === null) return -1;
+      return b.players.length - a.players.length || a.label.localeCompare(b.label);
+    });
+}
+
 export function ServersTab() {
   const [servers, setServers] = useState<ServerListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pings, setPings] = useState<Record<string, PingState>>({});
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(
+    () => new Set(),
+  );
   const pingSeqRef = useRef(0);
 
   useEffect(() => {
@@ -104,6 +148,7 @@ export function ServersTab() {
     if (p && p.status === "done" && p.result.ok && p.result.latency_ms != null) {
       return p.result.latency_ms;
     }
+    if (typeof sv.ping === "number" && sv.ping > 0) return sv.ping;
     return Number.POSITIVE_INFINITY;
   };
   const sortedServers = servers
@@ -156,17 +201,50 @@ export function ServersTab() {
           const key = serverKey(sv);
           const addr = serverAddr(sv);
           const ping = pings[key];
+          const players = sv.players ?? [];
+          const hasPlayers = players.length > 0;
+          const isExpanded = hasPlayers && expandedServers.has(key);
+          const playerGroups = isExpanded ? groupPlayersByCountry(players) : [];
+          const measuredLatency =
+            ping?.status === "done" &&
+            ping.result.ok &&
+            ping.result.latency_ms != null
+              ? ping.result.latency_ms
+              : null;
+          const reportedLatency =
+            typeof sv.ping === "number" && sv.ping > 0 ? sv.ping : null;
+          const displayLatency = measuredLatency ?? reportedLatency;
+
+          const toggleExpanded = () => {
+            if (!hasPlayers) return;
+            setExpandedServers((current) => {
+              const next = new Set(current);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            });
+          };
+
           return (
-            <GlassCard key={key}>
-              <div className="flex items-start justify-between gap-4">
+            <GlassCard key={key} padding={false} className="overflow-hidden">
+              <button
+                type="button"
+                onClick={toggleExpanded}
+                disabled={!hasPlayers}
+                aria-expanded={hasPlayers ? isExpanded : undefined}
+                className={`w-full p-5 text-left flex items-start justify-between gap-4 transition-colors disabled:cursor-default ${
+                  hasPlayers ? "hover:bg-white/[0.025]" : ""
+                }`}
+              >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">
                     {sv.name}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/50 flex-wrap">
                     {sv.map && (
-                      <span className="px-1.5 py-0.5 rounded bg-white/5">
-                        {mapName(sv.map)}
+                      <span className="px-1.5 py-0.5 rounded bg-white/5 text-white/65">
+                        <span aria-hidden="true" className="mr-1">▱</span>
+                        地图 · {mapName(sv.map)}
                       </span>
                     )}
                     {sv.playlist && (
@@ -178,65 +256,93 @@ export function ServersTab() {
                       <span>{sv.region}</span>
                     )}
                     {sv.country && (
-                      <span>{countryName(sv.country)}</span>
-                    )}
-                    {addr && (
-                      <span className="font-mono text-white/40">
-                        {addr.ip}:{addr.port}
+                      <span className="inline-flex items-center gap-1">
+                        <span aria-hidden="true" className="text-sm leading-none">
+                          {countryFlag(sv.country)}
+                        </span>
+                        {countryName(sv.country) || sv.country}
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                  <div className="text-lg font-bold tabular-nums">
+                <div className="shrink-0 flex items-center gap-3">
+                  <div className="text-right flex flex-col items-end gap-1">
+                    <div className="text-lg font-bold tabular-nums">
+                      <span
+                        className={
+                          sv.player_count > 0
+                            ? "text-emerald-300"
+                            : "text-white/40"
+                        }
+                      >
+                        {sv.player_count}
+                      </span>
+                      {sv.max_players != null && (
+                        <span className="text-white/30 text-sm">
+                          /{sv.max_players}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-white/40 ml-1">玩家</span>
+                    </div>
+                    <div className="text-[11px] tabular-nums">
+                      {displayLatency != null ? (
+                        <span className={pingColor(displayLatency)}>
+                          {displayLatency} ms
+                        </span>
+                      ) : addr && (!ping || ping.status === "pending") ? (
+                        <span className="text-white/40">测速中…</span>
+                      ) : ping?.status === "done" ? (
+                        <span
+                          className="text-red-300/80"
+                          title={ping.result.error ?? undefined}
+                        >
+                          超时
+                        </span>
+                      ) : (
+                        <span className="text-white/30">延迟未上报</span>
+                      )}
+                    </div>
+                  </div>
+                  {hasPlayers && (
                     <span
-                      className={
-                        sv.player_count > 0
-                          ? "text-emerald-300"
-                          : "text-white/40"
-                      }
+                      aria-hidden="true"
+                      className={`text-white/40 text-sm transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
                     >
-                      {sv.player_count}
+                      ▾
                     </span>
-                    {sv.max_players != null && (
-                      <span className="text-white/30 text-sm">
-                        /{sv.max_players}
-                      </span>
-                    )}
-                    <span className="text-[10px] text-white/40 ml-1">玩家</span>
-                  </div>
-                  <div className="text-[11px] tabular-nums">
-                    {!addr ? (
-                      <span className="text-white/30">无地址</span>
-                    ) : !ping || ping.status === "pending" ? (
-                      <span className="text-white/40">测速中…</span>
-                    ) : ping.result.ok && ping.result.latency_ms != null ? (
-                      <span className={pingColor(ping.result.latency_ms)}>
-                        {ping.result.latency_ms} ms
-                      </span>
-                    ) : (
-                      <span
-                        className="text-red-300/80"
-                        title={ping.result.error ?? undefined}
-                      >
-                        超时
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
-              </div>
+              </button>
 
-              {/* Player list (expandable) */}
-              {sv.players && sv.players.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-white/5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {sv.players.map((p) => (
-                      <span
-                        key={p.name}
-                        className="text-[11px] px-2 py-0.5 rounded bg-white/5 text-white/70 font-mono"
-                      >
-                        {p.name}
-                      </span>
+              {isExpanded && (
+                <div className="px-5 pb-5">
+                  <div className="pt-4 border-t border-white/5 space-y-4">
+                    {playerGroups.map((group) => (
+                      <section key={group.key}>
+                        <div className="flex items-center gap-2 mb-2 text-xs text-white/60">
+                          <span aria-hidden="true" className="text-base leading-none">
+                            {countryFlag(group.code)}
+                          </span>
+                          <span className="font-medium text-white/75">
+                            {group.label}
+                          </span>
+                          <span className="text-[10px] text-white/35 tabular-nums">
+                            {group.players.length} 人
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.players.map((player, index) => (
+                            <span
+                              key={`${player.name}-${index}`}
+                              className="text-[11px] px-2 py-1 rounded-md bg-white/5 text-white/75 font-mono"
+                            >
+                              {player.name}
+                            </span>
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 </div>
