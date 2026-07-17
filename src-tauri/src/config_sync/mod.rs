@@ -454,116 +454,131 @@ fn field_definitions() -> Vec<FieldDefinition> {
     let mut fields = vec![
         field(
             "mouse_sensitivity",
-            "基础灵敏度",
+            "鼠标灵敏度",
             ConfigSection::MouseKeyboard,
         ),
         field(
             "mouse_use_per_scope_sensitivity_scalars",
-            "启用键鼠逐倍镜",
+            "启用每倍镜 ADS 鼠标灵敏度",
             ConfigSection::MouseKeyboard,
         ),
     ];
-    for index in 0..=7 {
+    for (index, optic) in OPTIC_NAMES.iter().enumerate() {
+        let label = match index {
+            0 => "ADS 鼠标灵敏度倍率（默认 / 1 倍镜）".to_string(),
+            7 => "未使用倍镜的 ADS 鼠标灵敏度倍率（保留项）".to_string(),
+            _ => format!("{optic} ADS 鼠标灵敏度倍率"),
+        };
         fields.push(field(
             &format!("mouse_zoomed_sensitivity_scalar_{index}"),
-            &format!("键鼠倍镜灵敏度 {index}"),
+            &label,
             ConfigSection::MouseKeyboard,
         ));
     }
-    fields.push(field("cl_fovScale", "视野范围 FOV", ConfigSection::Fov));
+    fields.push(field("cl_fovScale", "视野（FOV）", ConfigSection::Fov));
     fields.push(field(
         "gamepad_aim_speed",
-        "手柄基础灵敏度",
+        "视线灵敏度",
         ConfigSection::Controller,
     ));
-    for index in 0..=7 {
+    for (index, optic) in OPTIC_NAMES.iter().enumerate() {
+        let label = match index {
+            0 => "ADS 视线灵敏度（默认 / 1 倍镜）".to_string(),
+            7 => "未使用倍镜的 ADS 视线灵敏度（保留项）".to_string(),
+            _ => format!("{optic} ADS 视线灵敏度"),
+        };
         fields.push(field(
             &format!("gamepad_aim_speed_ads_{index}"),
-            &format!("手柄 ADS 灵敏度 {index}"),
+            &label,
             ConfigSection::Controller,
         ));
     }
-    for index in 0..=7 {
+    for (index, optic) in OPTIC_NAMES.iter().enumerate() {
+        let label = if index == 7 {
+            "未使用倍镜的 ADS 灵敏度倍率（保留项）".to_string()
+        } else {
+            format!("{optic} ADS 灵敏度倍率")
+        };
         fields.push(field(
             &format!("gamepad_ads_advanced_sensitivity_scalar_{index}"),
-            &format!("手柄逐倍镜倍率 {index}"),
+            &label,
             ConfigSection::Controller,
         ));
     }
     fields.extend([
         field(
             "gamepad_use_per_scope_sensitivity_scalars",
-            "启用手柄逐倍镜倍率",
+            "启用每倍镜 ADS 灵敏度倍率",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_use_per_scope_ads_settings",
-            "启用手柄逐倍镜 ADS",
+            "启用每倍镜 ADS 视线灵敏度",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_enabled",
-            "启用 ALC",
+            "自定义视角控制（ALC）",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_pitch",
-            "ALC ADS Pitch",
+            "ALC ADS 上下移动速度",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_yaw",
-            "ALC ADS Yaw",
+            "ALC ADS 左右移动速度",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_turn_pitch",
-            "ALC ADS 额外 Pitch",
+            "ALC ADS 转向额外上下移动",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_turn_yaw",
-            "ALC ADS 额外 Yaw",
+            "ALC ADS 转向额外左右移动",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_turn_time",
-            "ALC ADS 加速时间",
+            "ALC ADS 转向启动时间",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_ads_turn_delay",
-            "ALC ADS 加速延迟",
+            "ALC ADS 转向启动延迟",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_pitch",
-            "ALC Hip Pitch",
+            "ALC 上下移动速度",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_yaw",
-            "ALC Hip Yaw",
+            "ALC 左右移动速度",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_turn_pitch",
-            "ALC Hip 额外 Pitch",
+            "ALC 转向额外上下移动",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_turn_yaw",
-            "ALC Hip 额外 Yaw",
+            "ALC 转向额外左右移动",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_turn_time",
-            "ALC Hip 加速时间",
+            "ALC 转向启动时间",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_hip_turn_delay",
-            "ALC Hip 加速延迟",
+            "ALC 转向启动延迟",
             ConfigSection::Controller,
         ),
         field(
@@ -573,17 +588,17 @@ fn field_definitions() -> Vec<FieldDefinition> {
         ),
         field(
             "gamepad_custom_deadzone_in",
-            "ALC 内死区",
+            "ALC 死区",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_custom_deadzone_out",
-            "ALC 外死区",
+            "ALC 外部阈值",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_deadzone_index_look",
-            "观察死区",
+            "视角死区",
             ConfigSection::Controller,
         ),
         field(
@@ -591,15 +606,30 @@ fn field_definitions() -> Vec<FieldDefinition> {
             "移动死区",
             ConfigSection::Controller,
         ),
-        field("gamepad_look_curve", "响应曲线", ConfigSection::Controller),
+        field(
+            "gamepad_look_curve",
+            "基础响应曲线",
+            ConfigSection::Controller,
+        ),
         field(
             "gamepad_trigger_threshold",
-            "扳机阈值",
+            "扳机死区",
             ConfigSection::Controller,
         ),
     ]);
     fields
 }
+
+const OPTIC_NAMES: [&str; 8] = [
+    "1 倍镜 / 机械瞄具",
+    "2 倍镜",
+    "3 倍镜",
+    "4 倍镜",
+    "6 倍镜",
+    "8 倍镜",
+    "10 倍镜",
+    "未使用倍镜",
+];
 
 fn field(key: &str, label: &str, section: ConfigSection) -> FieldDefinition {
     FieldDefinition {
