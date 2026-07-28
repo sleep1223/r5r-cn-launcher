@@ -22,7 +22,7 @@ Use `pnpm`; the Tauri config calls pnpm from its dev/build hooks.
 - `cargo check --manifest-path src-tauri/Cargo.toml` validates Rust backend changes quickly.
 - `cargo test --manifest-path src-tauri/Cargo.toml --lib` runs backend unit tests.
 
-After any file change, run the default gates before handing off: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` and `cargo check --manifest-path src-tauri/Cargo.toml`. Do not run full compile/build or test commands unless the user specifically asks for them or the change is a version bump.
+After any file change, run the default gates before handing off: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` and `cargo check --manifest-path src-tauri/Cargo.toml`. Version bumps use the release-specific gates below instead of these default gates. Do not run full compile/build or test commands unless the user specifically asks for them.
 
 ## Coding Style & Naming Conventions
 
@@ -40,4 +40,13 @@ Recent commits use release-style subjects such as `v0.36.0: launch EA App and wa
 
 ## Release & Configuration Notes
 
-Do not bump versions unless explicitly requested. A release bump must update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` together so local version files match the release tag. For version bumps, run `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo check --manifest-path src-tauri/Cargo.toml`, and `cargo test --manifest-path src-tauri/Cargo.toml --lib` before tagging. After validation, commit the version change, create the matching `vX.Y.Z` tag, and push it with `git push origin vX.Y.Z` so the release workflow is triggered. The release workflow installs with `pnpm install --frozen-lockfile` and builds Windows artifacts with `pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis`. Never commit signing private keys; release signing uses GitHub Actions secrets.
+Do not bump versions unless explicitly requested. A release bump must update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` together so local version files match the release tag.
+
+For a version bump, run only these two local validation commands before committing or pushing:
+
+- `cargo check --manifest-path src-tauri/Cargo.toml --lib --locked`
+- `pnpm exec tsc --noEmit --incremental false`
+
+Do not run local compile, build, bundle, or test commands as part of a version bump. In particular, do not run `cargo test`, `cargo build`, `pnpm build`, `pnpm tauri dev`, or `pnpm tauri build`. The two check-only commands above are the complete local release gate. Both commands must pass before committing, tagging, or pushing anything to GitHub.
+
+After both checks pass, commit the version change, create the matching `vX.Y.Z` tag, and push both the current branch and the tag to the remote GitHub repository so the release workflow is triggered. The release workflow installs with `pnpm install --frozen-lockfile` and builds Windows artifacts with `pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis`. Never commit signing private keys; release signing uses GitHub Actions secrets.
