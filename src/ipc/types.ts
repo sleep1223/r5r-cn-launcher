@@ -72,6 +72,22 @@ export interface PathValidation {
   warnings: string[];
 }
 
+export interface RiskyApplication {
+  name: string;
+  category: string;
+  reason: string;
+  process_name: string;
+  pid: number;
+}
+
+export interface DiagnosticReportResult {
+  archive_path: string;
+  game_log_directory: string | null;
+  included_files: string[];
+  missing_crash_files: string[];
+  risky_applications: RiskyApplication[];
+}
+
 export interface ProxyTestResult {
   ok: boolean;
   status: number | null;

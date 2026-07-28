@@ -4,6 +4,7 @@ pub mod config;
 pub mod config_sync;
 pub mod dashboard;
 pub mod detect;
+pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod events;
@@ -165,6 +166,8 @@ pub fn run() {
             commands::ping::ping_host,
             commands::detect::detect_existing_r5r,
             commands::detect::auto_adopt_existing_install,
+            commands::diagnostics::collect_crash_diagnostics,
+            commands::diagnostics::open_diagnostic_report_folder,
             commands::config::get_channel_version,
             commands::dashboard::fetch_dashboard_config_cmd,
             commands::launch_options::get_launch_option_catalog,

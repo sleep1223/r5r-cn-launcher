@@ -29,6 +29,7 @@ export type UpdateCheckStatus =
 
 function App() {
   const [tab, setTab] = useState<TabId>("home");
+  const [focusDiagnostics, setFocusDiagnostics] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<LauncherUpdateInfo | null>(
     null,
   );
@@ -94,16 +95,31 @@ function App() {
     <SettingsProvider>
       <AuthProvider>
         <div className="h-screen w-screen flex overflow-hidden">
-          <Sidebar active={tab} onChange={setTab} />
+          <Sidebar
+            active={tab}
+            onChange={(nextTab) => {
+              setFocusDiagnostics(false);
+              setTab(nextTab);
+            }}
+          />
           <main className="flex-1 overflow-y-auto">
-            {tab === "home" && <HomeTab />}
+            {tab === "home" && (
+              <HomeTab
+                onOpenDiagnostics={() => {
+                  setFocusDiagnostics(true);
+                  setTab("settings");
+                }}
+              />
+            )}
             {tab === "servers" && <ServersTab />}
             {tab === "leaderboard" && <LeaderboardTab />}
             {tab === "teams" && <TeamsTab />}
             {tab === "profile" && <ProfileTab />}
             {tab === "launch_options" && <LaunchOptionsTab />}
             {tab === "config_sync" && <ConfigSyncTab />}
-            {tab === "settings" && <SettingsTab />}
+            {tab === "settings" && (
+              <SettingsTab focusDiagnostics={focusDiagnostics} />
+            )}
             {tab === "about" && (
               <AboutTab
                 pendingUpdate={pendingUpdate}

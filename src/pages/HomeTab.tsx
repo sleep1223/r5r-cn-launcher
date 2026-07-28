@@ -32,6 +32,10 @@ import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
 
 type Action = "install" | "update" | "play" | "blocked";
 
+interface HomeTabProps {
+  onOpenDiagnostics: () => void;
+}
+
 const formatGameVersion = (version: string | null | undefined) => {
   const normalized = version
     ?.trim()
@@ -40,7 +44,7 @@ const formatGameVersion = (version: string | null | undefined) => {
   return normalized ? `v${normalized}` : "—";
 };
 
-export function HomeTab() {
+export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
   const { settings, update, reload } = useSettings();
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -1030,13 +1034,41 @@ export function HomeTab() {
                 </div>
               )}
               {launchedPid !== null && (
-                <div className="text-xs text-emerald-300">
+                <div
+                  className={`text-xs ${
+                    exited &&
+                    exited.pid === launchedPid &&
+                    !exited.success
+                      ? "text-amber-300"
+                      : "text-emerald-300"
+                  }`}
+                >
                   已启动 (PID {launchedPid})
                   {exited && exited.pid === launchedPid && (
                     <> · 游戏已退出 (code {exited.code ?? "?"})</>
                   )}
                 </div>
               )}
+              {exited &&
+                exited.pid === launchedPid &&
+                !exited.success && (
+                  <div className="rounded-lg bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+                    <div className="font-medium">
+                      检测到游戏异常退出
+                    </div>
+                    <div className="mt-1 text-xs leading-relaxed text-white/65">
+                      如果刚才发生了闪退或报错，请收集最新崩溃日志。启动器会同时记录电脑配置、运行进程，并标记可能冲突的悬浮或注入类应用。
+                    </div>
+                    <div className="mt-3">
+                      <PrimaryButton
+                        variant="secondary"
+                        onClick={onOpenDiagnostics}
+                      >
+                        收集崩溃日志
+                      </PrimaryButton>
+                    </div>
+                  </div>
+                )}
               {launchError && (
                 <div className="text-xs text-red-300">
                   启动失败：{launchError}

@@ -3,6 +3,7 @@ pub mod config;
 pub mod config_sync;
 pub mod dashboard;
 pub mod detect;
+pub mod diagnostics;
 pub mod install;
 pub mod launch;
 pub mod launch_options;

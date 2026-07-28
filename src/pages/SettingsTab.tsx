@@ -3,17 +3,31 @@ import { GlassCard, SectionHeader } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useSettings } from "../hooks/useSettings";
 import {
+  DiagnosticReportResult,
   DetectedInstall,
   ProxyMode,
   ProxyTestResult,
   UpdateStrategy,
 } from "../ipc/types";
 import { setProxyMode, testProxy } from "../ipc/proxy";
-import { validateInstallPath, openLogFolder, openConfigFolder } from "../ipc/settings";
+import {
+  collectCrashDiagnostics,
+  openConfigFolder,
+  openDiagnosticReportFolder,
+  openLogFolder,
+  validateInstallPath,
+} from "../ipc/settings";
 import { detectExistingR5R } from "../ipc/detect";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import {
+  open as openDialog,
+  save as saveDialog,
+} from "@tauri-apps/plugin-dialog";
 
 const CUSTOM_OPTION = "__custom__";
+
+interface SettingsTabProps {
+  focusDiagnostics?: boolean;
+}
 
 /**
  * Walk up `detectedPath` looking for the `R5R Library` segment and return its
@@ -50,7 +64,7 @@ function formatInstallDirPreview(root: string): string {
   return `${normalized}/R5R Library/<频道>/`;
 }
 
-export function SettingsTab() {
+export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
   const { settings, loading, error, update, reload } = useSettings();
   const [proxyKind, setProxyKind] = useState<ProxyMode["kind"]>("system");
   const [proxyUrl, setProxyUrl] = useState("");
@@ -70,6 +84,10 @@ export function SettingsTab() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [detected, setDetected] = useState<DetectedInstall[] | null>(null);
+  const [diagnosticResult, setDiagnosticResult] =
+    useState<DiagnosticReportResult | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const diagnosticsRef = useRef<HTMLDivElement>(null);
   // Tracks whether local state has been hydrated from `settings` at least
   // once. Until that flips true the autosave effect must not fire — we'd
   // otherwise immediately overwrite the saved settings with empty defaults.
@@ -91,6 +109,17 @@ export function SettingsTab() {
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
   }, [settings]);
+
+  useEffect(() => {
+    if (!focusDiagnostics || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      diagnosticsRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusDiagnostics, loading]);
 
   // Run detection once so we can offer detected installs as quick-pick options.
   useEffect(() => {
@@ -299,6 +328,31 @@ export function SettingsTab() {
     try {
       await reload();
       setSavedAt(null);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCollectDiagnostics = async () => {
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .replace("Z", "");
+    const destination = await saveDialog({
+      title: "保存 R5R 崩溃诊断包",
+      defaultPath: `r5r-crash-report-${timestamp}.zip`,
+      filters: [{ name: "ZIP 压缩包", extensions: ["zip"] }],
+    });
+    if (!destination) return;
+
+    setBusy("diagnostics");
+    setDiagnosticResult(null);
+    setDiagnosticError(null);
+    try {
+      setDiagnosticResult(await collectCrashDiagnostics(destination));
+    } catch (e) {
+      setDiagnosticError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -539,17 +593,95 @@ export function SettingsTab() {
       </GlassCard>
 
       {/* 高级 */}
-      <GlassCard>
-        <SectionHeader icon="⚒" title="高级" />
-        <div className="flex gap-2">
-          <PrimaryButton variant="secondary" onClick={() => openLogFolder()}>
-            打开日志目录
-          </PrimaryButton>
-          <PrimaryButton variant="secondary" onClick={() => openConfigFolder()}>
-            打开配置目录
-          </PrimaryButton>
-        </div>
-      </GlassCard>
+      <div ref={diagnosticsRef} className="scroll-mt-6">
+        <GlassCard>
+          <SectionHeader
+            icon="⚒"
+            title="高级"
+            subtitle="崩溃诊断包仅保存在你选择的位置，不会自动上传。包内包含最新游戏会话日志、电脑配置、Windows 用户名和运行中的进程名。"
+          />
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton
+              variant="secondary"
+              onClick={handleCollectDiagnostics}
+              disabled={busy === "diagnostics"}
+            >
+              {busy === "diagnostics" ? "正在收集…" : "收集崩溃日志"}
+            </PrimaryButton>
+            <PrimaryButton variant="secondary" onClick={() => openLogFolder()}>
+              打开日志目录
+            </PrimaryButton>
+            <PrimaryButton
+              variant="secondary"
+              onClick={() => openConfigFolder()}
+            >
+              打开配置目录
+            </PrimaryButton>
+          </div>
+          {diagnosticError && (
+            <div className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              收集失败：{diagnosticError}
+            </div>
+          )}
+          {diagnosticResult && (
+            <div
+              className={`mt-3 rounded-lg px-3 py-3 text-sm ${
+                diagnosticResult.risky_applications.length > 0
+                  ? "bg-amber-500/10 text-amber-100"
+                  : "bg-emerald-500/10 text-emerald-100"
+              }`}
+            >
+              <div className="font-medium">诊断包已生成</div>
+              <div className="mt-1 break-all text-xs text-white/60">
+                {diagnosticResult.archive_path}
+              </div>
+              {diagnosticResult.risky_applications.length > 0 && (
+                <div className="mt-3">
+                  <div className="font-medium text-amber-200">
+                    检测到可能导致崩溃的悬浮或注入类应用
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-amber-100/80">
+                    {diagnosticResult.risky_applications.map((app) => (
+                      <li key={`${app.pid}-${app.name}`}>
+                        {app.name}（{app.process_name}，{app.category}）
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 text-xs leading-relaxed text-white/70">
+                    请先关闭这些应用的游戏内覆盖、性能监控和录制功能；可以退出的应用请完全退出，然后再次复现。若仍然崩溃，请加入
+                    QQ 群 732124612，在群内 @QQ
+                    1259332131，发送诊断包并说明崩溃前的操作及是否可以稳定复现。
+                  </div>
+                </div>
+              )}
+              {diagnosticResult.missing_crash_files.length > 0 && (
+                <div className="mt-2 text-xs text-white/60">
+                  最新日志目录未找到：
+                  {diagnosticResult.missing_crash_files.join("、")}
+                  。请在游戏崩溃后重新收集。
+                </div>
+              )}
+              {diagnosticResult.risky_applications.length === 0 && (
+                <div className="mt-2 text-xs leading-relaxed text-white/70">
+                  未检测到已知风险应用。请加入 QQ 群
+                  732124612，在群内 @QQ
+                  1259332131，发送诊断包并说明崩溃前的操作及是否可以稳定复现。
+                </div>
+              )}
+              <div className="mt-3">
+                <PrimaryButton
+                  variant="secondary"
+                  onClick={() =>
+                    openDiagnosticReportFolder(diagnosticResult.archive_path)
+                  }
+                >
+                  打开所在目录
+                </PrimaryButton>
+              </div>
+            </div>
+          )}
+        </GlassCard>
+      </div>
 
       {/* 自动保存 + 重置 */}
       <div className="sticky bottom-0 -mx-6 px-6 py-3 bg-gradient-to-t from-[#0f1216] to-transparent flex items-center justify-end gap-3">
