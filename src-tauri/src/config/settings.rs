@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const SETTINGS_FILE: &str = "settings.json";
-pub const CURRENT_SCHEMA: u32 = 1;
+pub const CURRENT_SCHEMA: u32 = 2;
 
 /// How updates resolve mismatched files. `Verify` walks the manifest and
 /// re-downloads anything whose SHA-256 doesn't match — slow but always
@@ -25,6 +25,15 @@ pub enum UpdateStrategy {
 pub struct LauncherSettings {
     #[serde(default = "default_schema")]
     pub schema_version: u32,
+
+    /// Anonymous installation identity used only for idempotent first-use
+    /// reporting. It is generated locally and never accepted from the UI.
+    #[serde(default)]
+    pub installation_id: String,
+
+    /// Allow the release build to report this installation's first open.
+    #[serde(default = "default_usage_reporting_enabled")]
+    pub usage_reporting_enabled: bool,
 
     #[serde(default)]
     pub proxy_mode: ProxyMode,
@@ -86,6 +95,8 @@ impl Default for LauncherSettings {
     fn default() -> Self {
         Self {
             schema_version: CURRENT_SCHEMA,
+            installation_id: uuid::Uuid::new_v4().to_string(),
+            usage_reporting_enabled: default_usage_reporting_enabled(),
             proxy_mode: ProxyMode::default(),
             mirror_domain: default_mirror_domain(),
             library_root: String::new(),
@@ -103,6 +114,10 @@ impl Default for LauncherSettings {
 }
 
 fn default_launch_via_ea_app() -> bool {
+    true
+}
+
+fn default_usage_reporting_enabled() -> bool {
     true
 }
 
@@ -162,9 +177,6 @@ impl LauncherSettings {
     }
 
     fn migrate(&mut self) {
-        if self.schema_version == 0 {
-            self.schema_version = CURRENT_SCHEMA;
-        }
         // v1→v2: root_config_url (full URL) was replaced by mirror_domain.
         // serde(alias) already deserializes the old key into mirror_domain,
         // but the value might still be a full URL — strip it down to just the host.
@@ -175,6 +187,10 @@ impl LauncherSettings {
                 }
             }
         }
+        if self.installation_id.is_empty() {
+            self.installation_id = uuid::Uuid::new_v4().to_string();
+        }
+        self.schema_version = CURRENT_SCHEMA;
     }
 
     pub fn install_dir_for(&self, channel_name: &str) -> Option<PathBuf> {
@@ -208,5 +224,24 @@ mod tests {
             LauncherSettings::default().update_strategy,
             UpdateStrategy::Patch
         );
+    }
+
+    #[test]
+    fn old_settings_gain_a_persistent_installation_id() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(SETTINGS_FILE),
+            r#"{"schema_version":1,"usage_reporting_enabled":false}"#,
+        )
+        .unwrap();
+
+        let migrated = LauncherSettings::load_or_default(dir.path()).unwrap();
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA);
+        assert!(uuid::Uuid::parse_str(&migrated.installation_id).is_ok());
+        assert!(!migrated.usage_reporting_enabled);
+
+        migrated.save(dir.path()).unwrap();
+        let reloaded = LauncherSettings::load_or_default(dir.path()).unwrap();
+        assert_eq!(reloaded.installation_id, migrated.installation_id);
     }
 }

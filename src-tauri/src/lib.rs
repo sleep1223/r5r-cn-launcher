@@ -14,6 +14,7 @@ pub mod offline;
 pub mod process;
 pub mod proxy;
 pub mod state;
+pub mod telemetry;
 pub mod updater;
 pub mod util;
 pub mod verify;
@@ -89,6 +90,15 @@ pub fn run() {
                     tracing::warn!("加载 settings.json 失败，使用默认值: {}", e);
                     LauncherSettings::default()
                 });
+            // Persist schema migrations (including the anonymous installation
+            // UUID) before exposing settings to the frontend.
+            let settings_persisted = settings
+                .save(&config_dir)
+                .map_err(|error| {
+                    tracing::warn!("保存迁移后的 settings.json 失败: {}", error);
+                    error
+                })
+                .is_ok();
 
             // Build initial HTTP client from the persisted proxy mode. Failure
             // here falls back to a direct (no-proxy) client so the launcher
@@ -98,9 +108,20 @@ pub fn run() {
                 .expect("HTTP 客户端构建彻底失败");
 
             let launch_ea_on_startup = settings.launch_via_ea_app;
+            let usage_settings = settings.clone();
+            let usage_client = http.client();
             let state = LauncherState::new(settings, http);
             *state.config_dir.write() = config_dir;
             app.manage(state);
+
+            // Single-instance initialization has already completed. Reporting
+            // is release-only, best-effort, and never delays application setup.
+            if settings_persisted {
+                tauri::async_runtime::spawn(crate::telemetry::report_first_open(
+                    usage_client,
+                    usage_settings,
+                ));
+            }
 
             // Start EA alongside the launcher instead of delaying the user's
             // click on "启动游戏". This is best-effort here: launch-time

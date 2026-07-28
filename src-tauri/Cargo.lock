@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "launcher-app"
-version = "0.36.12"
+version = "0.36.13"
 dependencies = [
  "anyhow",
  "async-channel",

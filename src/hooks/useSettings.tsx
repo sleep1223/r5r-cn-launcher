@@ -44,7 +44,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const update = useCallback(
     async (patch: Partial<LauncherSettings>) => {
       if (!settings) return;
-      const next = { ...settings, ...patch };
+      const next = {
+        ...settings,
+        ...patch,
+        installation_id: settings.installation_id,
+        schema_version: settings.schema_version,
+      };
       await saveSettings(next);
       setSettings(next);
     },

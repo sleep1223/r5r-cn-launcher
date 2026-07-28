@@ -16,6 +16,8 @@ export type UpdateStrategy = "verify" | "patch";
 
 export interface LauncherSettings {
   schema_version: number;
+  readonly installation_id: string;
+  usage_reporting_enabled: boolean;
   proxy_mode: ProxyMode;
   mirror_domain: string;
   library_root: string;
@@ -24,6 +26,7 @@ export interface LauncherSettings {
   channels: Record<string, PerChannelState>;
   launch_option_selection: unknown;
   last_known_official_install_path: string | null;
+  dashboard_api_url: string;
   update_strategy: UpdateStrategy;
   download_hd_textures: boolean;
   launch_via_ea_app: boolean;

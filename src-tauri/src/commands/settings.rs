@@ -14,8 +14,13 @@ pub fn load_settings(state: State<'_, LauncherState>) -> AppResult<LauncherSetti
 #[tauri::command]
 pub async fn save_settings(
     state: State<'_, LauncherState>,
-    settings: LauncherSettings,
+    mut settings: LauncherSettings,
 ) -> AppResult<()> {
+    // The installation identity is backend-owned. Ignore any value supplied
+    // by the webview so ordinary settings saves cannot rotate or forge it.
+    settings.installation_id = state.settings.read().installation_id.clone();
+    settings.schema_version = crate::config::settings::CURRENT_SCHEMA;
+
     // If proxy mode changed, rebuild the HTTP client BEFORE persisting, so a
     // failed rebuild surfaces as an error and we don't accept a bad config.
     let old_mode = state.settings.read().proxy_mode.clone();

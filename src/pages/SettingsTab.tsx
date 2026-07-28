@@ -72,6 +72,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("patch");
   const [downloadHdTextures, setDownloadHdTextures] = useState(false);
   const [launchViaEaApp, setLaunchViaEaApp] = useState(true);
+  const [usageReportingEnabled, setUsageReportingEnabled] = useState(true);
   const [libraryRoot, setLibraryRoot] = useState("");
   // Which row in the install-location dropdown is selected. Either a detected
   // library_root, or `__custom__` to enable the manual text input.
@@ -105,6 +106,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
     setUpdateStrategy(settings.update_strategy);
     setDownloadHdTextures(settings.download_hd_textures);
     setLaunchViaEaApp(settings.launch_via_ea_app);
+    setUsageReportingEnabled(settings.usage_reporting_enabled);
     setLibraryRoot(settings.library_root.replace(/\\/g, "/"));
     setConcurrency(settings.concurrent_downloads);
     hydrated.current = true;
@@ -268,6 +270,8 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
       downloadHdTextures !== settings.download_hd_textures;
     const launchViaEaAppChanged =
       launchViaEaApp !== settings.launch_via_ea_app;
+    const usageReportingChanged =
+      usageReportingEnabled !== settings.usage_reporting_enabled;
 
     if (
       !proxyChanged &&
@@ -276,7 +280,8 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
       !concurrencyChanged &&
       !updateStrategyChanged &&
       !hdTexturesChanged &&
-      !launchViaEaAppChanged
+      !launchViaEaAppChanged &&
+      !usageReportingChanged
     ) {
       return;
     }
@@ -296,6 +301,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
           update_strategy: updateStrategy,
           download_hd_textures: downloadHdTextures,
           launch_via_ea_app: launchViaEaApp,
+          usage_reporting_enabled: usageReportingEnabled,
         });
         setSavedAt(Date.now());
       } catch (e) {
@@ -314,6 +320,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
     updateStrategy,
     downloadHdTextures,
     launchViaEaApp,
+    usageReportingEnabled,
     libraryRoot,
     concurrency,
     pathErrors.length,
@@ -504,6 +511,24 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
             className="h-4 w-4 accent-blue-400"
           />
           <span className="text-sm text-white/80">随启动器打开 EA App</span>
+        </label>
+      </GlassCard>
+
+      {/* 匿名使用统计 */}
+      <GlassCard>
+        <SectionHeader
+          icon="◉"
+          title="匿名使用统计"
+          subtitle="用于统计启动器首次使用人数。仅发送随机安装 UUID、启动器版本、操作系统和架构；不读取硬件指纹、游戏账号或 AppKey。"
+        />
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={usageReportingEnabled}
+            onChange={(e) => setUsageReportingEnabled(e.target.checked)}
+            className="h-4 w-4 accent-blue-400"
+          />
+          <span className="text-sm text-white/80">允许匿名首次使用统计</span>
         </label>
       </GlassCard>
 
