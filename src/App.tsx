@@ -3,6 +3,7 @@ import { Sidebar, TabId } from "./components/Sidebar";
 import { HomeTab } from "./pages/HomeTab";
 import { ServersTab } from "./pages/ServersTab";
 import { LeaderboardTab } from "./pages/LeaderboardTab";
+import { ApexTab } from "./pages/ApexTab";
 import { TeamsTab } from "./pages/TeamsTab";
 import { ProfileTab } from "./pages/ProfileTab";
 import { LaunchOptionsTab } from "./pages/LaunchOptionsTab";
@@ -113,6 +114,7 @@ function App() {
             )}
             {tab === "servers" && <ServersTab />}
             {tab === "leaderboard" && <LeaderboardTab />}
+            {tab === "apex" && <ApexTab />}
             {tab === "teams" && <TeamsTab />}
             {tab === "profile" && <ProfileTab />}
             {tab === "launch_options" && <LaunchOptionsTab />}

@@ -6,6 +6,7 @@ export type TabId =
   | "home"
   | "servers"
   | "leaderboard"
+  | "apex"
   | "teams"
   | "profile"
   | "launch_options"
@@ -22,6 +23,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "home", label: "首页", icon: "▶" },
   { id: "servers", label: "服务器", icon: "☁" },
   { id: "leaderboard", label: "排行榜", icon: "♛" },
+  { id: "apex", label: "Apex", icon: "◈" },
   { id: "teams", label: "组队", icon: "♟" },
   { id: "profile", label: "我的", icon: "☺" },
   { id: "launch_options", label: "启动项", icon: "⚙" },

@@ -200,9 +200,125 @@ export interface SaveGameConfigPreset {
   content: string;
 }
 
+export type ApexPlatform = "PC" | "PS4" | "X1" | "SWITCH";
+
+export interface ApexPlayerSummary {
+  uid?: string | number | null;
+  name?: string | null;
+  platform?: ApexPlatform | string | null;
+  level?: number | null;
+  rank_score?: number | null;
+  rank_name?: string | null;
+  rank_name_zh?: string | null;
+  rank_div?: number | null;
+  rank_img?: string | null;
+  selected_legend?: string | null;
+  selected_legend_zh?: string | null;
+  lobby_state?: string | null;
+  lobby_state_zh?: string | null;
+  is_online?: boolean | string | null;
+  can_join?: boolean | string | null;
+  party_full?: boolean | string | null;
+  current_state?: string | null;
+  current_state_zh?: string | null;
+  current_state_text?: string | null;
+  current_state_text_zh?: string | null;
+}
+
+export interface ApexPlayerComparison {
+  has_previous: boolean;
+  changes: Record<string, unknown>;
+}
+
+export interface ApexPlayerStats {
+  resolved?: Record<string, unknown> | null;
+  summary: ApexPlayerSummary;
+  comparison?: ApexPlayerComparison;
+  snapshot_id?: number | null;
+  credit?: string;
+}
+
+export interface ApexCachePayload<T> {
+  data: T;
+  updated_at?: string | null;
+  error?: string | null;
+  credit?: string;
+}
+
+export interface ApexMapEntry {
+  map?: string;
+  map_zh?: string;
+  remainingTimer?: string;
+  remainingSecs?: number;
+  asset?: string;
+  eventName?: string;
+  eventName_zh?: string;
+}
+
+export interface ApexMapMode {
+  name?: string;
+  name_zh?: string;
+  current?: ApexMapEntry;
+  next?: ApexMapEntry;
+}
+
+export interface ApexMapRotation {
+  battle_royale?: ApexMapMode;
+  ranked?: ApexMapMode;
+  ltm?: ApexMapMode;
+  wildcard?: ApexMapMode;
+}
+
+export interface ApexServerStatusRow {
+  name: string;
+  name_zh?: string;
+  key?: string;
+  status?: string;
+  status_zh?: string;
+  response_time?: number;
+}
+
+export interface ApexServerStatusSection {
+  section_name: string;
+  section_name_zh?: string;
+  section_key: string;
+  rows: ApexServerStatusRow[];
+}
+
+export interface ApexPredatorPlatform {
+  name: string;
+  val?: number;
+  total_masters?: number;
+}
+
+export type ApexPredator = Record<string, ApexPredatorPlatform>;
+export type ApexTranslations = Record<string, Record<string, string>>;
+
 // ===== Endpoints =====
 
 export const getServers = () => get<ServerListItem[]>("/v1/r5/server");
+
+export const getApexPlayer = (params: {
+  player_name?: string;
+  uid?: string;
+  platform?: ApexPlatform;
+  resolve_uid_first?: boolean;
+  save_snapshot?: boolean;
+}) => get<ApexPlayerStats>(`/v1/r5/apex/player${qs(params)}`);
+
+export const getApexTranslations = () =>
+  get<ApexTranslations>("/v1/r5/apex/translations");
+
+export const getApexMapRotation = () =>
+  get<ApexCachePayload<ApexMapRotation>>("/v1/r5/apex/map-rotation");
+
+export const getApexServerStatus = () =>
+  get<ApexCachePayload<ApexServerStatusSection[]>>(
+    "/v1/r5/apex/server-status",
+  );
+
+export const getApexPredator = () =>
+  get<ApexCachePayload<ApexPredator>>("/v1/r5/apex/predator");
 
 type LeaderboardParams = {
   range?: "today" | "yesterday" | "week" | "month" | "all";
@@ -211,7 +327,9 @@ type LeaderboardParams = {
   sort?: "kills" | "deaths" | "kd";
 };
 
-function qs(params: Record<string, string | number | undefined>): string {
+function qs(
+  params: Record<string, string | number | boolean | undefined>,
+): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) q.set(k, String(v));
