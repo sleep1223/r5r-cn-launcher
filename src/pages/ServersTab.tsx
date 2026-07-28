@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components/GlassCard";
 import { getServers, PlayerInServer, ServerListItem } from "../api";
 import {
-  countryFlag,
   countryName,
+  flagImage,
   gamemodeName,
+  mapImage,
   mapName,
 } from "../utils/maps";
 import { pingHost, PingResult } from "../ipc/ping";
@@ -242,10 +243,13 @@ export function ServersTab() {
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/50 flex-wrap">
                     {sv.map && (
-                      <span className="px-1.5 py-0.5 rounded bg-white/5 text-white/65">
-                        <span aria-hidden="true" className="mr-1">▱</span>
-                        地图 · {mapName(sv.map)}
-                      </span>
+                      <img
+                        src={mapImage(sv.map)}
+                        alt={`地图：${mapName(sv.map)}`}
+                        title={mapName(sv.map)}
+                        loading="lazy"
+                        className="h-10 w-20 rounded-md object-cover ring-1 ring-white/10"
+                      />
                     )}
                     {sv.playlist && (
                       <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300">
@@ -257,9 +261,12 @@ export function ServersTab() {
                     )}
                     {sv.country && (
                       <span className="inline-flex items-center gap-1">
-                        <span aria-hidden="true" className="text-sm leading-none">
-                          {countryFlag(sv.country)}
-                        </span>
+                        <img
+                          src={flagImage(sv.country)}
+                          alt=""
+                          aria-hidden="true"
+                          className="h-3 w-4 rounded-[2px] object-cover ring-1 ring-white/10"
+                        />
                         {countryName(sv.country) || sv.country}
                       </span>
                     )}
@@ -322,9 +329,12 @@ export function ServersTab() {
                     {playerGroups.map((group) => (
                       <section key={group.key}>
                         <div className="flex items-center gap-2 mb-2 text-xs text-white/60">
-                          <span aria-hidden="true" className="text-base leading-none">
-                            {countryFlag(group.code)}
-                          </span>
+                          <img
+                            src={flagImage(group.code)}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-3 w-4 rounded-[2px] object-cover ring-1 ring-white/10"
+                          />
                           <span className="font-medium text-white/75">
                             {group.label}
                           </span>

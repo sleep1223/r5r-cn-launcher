@@ -39,6 +39,39 @@ export const mapName = (map?: string | null): string => {
   }
 };
 
+const IMAGE_BASE_URL = "https://r5.sleep0.de/img";
+
+export const mapImage = (map?: string | null): string => {
+  switch (map) {
+    case "mp_rr_canyonlands_staging": return `${IMAGE_BASE_URL}/maps/mp_rr_canyonlands_staging.webp`;
+    case "mp_rr_aqueduct": return `${IMAGE_BASE_URL}/maps/mp_rr_aqueduct.webp`;
+    case "mp_rr_aqueduct_night": return `${IMAGE_BASE_URL}/maps/mp_rr_aqueduct_night.webp`;
+    case "mp_rr_ashs_redemption": return `${IMAGE_BASE_URL}/maps/mp_rr_ashs_redemption.webp`;
+    case "mp_rr_canyonlands_64k_x_64k": return `${IMAGE_BASE_URL}/maps/mp_rr_canyonlands_64k_x_64k.webp`;
+    case "mp_rr_canyonlands_mu1": return `${IMAGE_BASE_URL}/maps/mp_rr_canyonlands_mu1.webp`;
+    case "mp_rr_canyonlands_mu1_night": return `${IMAGE_BASE_URL}/maps/mp_rr_canyonlands_mu1_night.webp`;
+    case "mp_rr_desertlands_64k_x_64k": return `${IMAGE_BASE_URL}/maps/mp_rr_desertlands_64k_x_64k.webp`;
+    case "mp_rr_desertlands_64k_x_64k_nx": return `${IMAGE_BASE_URL}/maps/mp_rr_desertlands_64k_x_64k_nx.webp`;
+    case "mp_rr_desertlands_64k_x_64k_tt": return `${IMAGE_BASE_URL}/maps/mp_rr_desertlands_64k_x_64k_tt.png`;
+    case "mp_rr_arena_composite": return `${IMAGE_BASE_URL}/maps/mp_rr_arena_composite.webp`;
+    case "mp_rr_arena_skygarden": return `${IMAGE_BASE_URL}/maps/mp_rr_arena_skygarden.webp`;
+    case "mp_rr_party_crasher": return `${IMAGE_BASE_URL}/maps/mp_rr_party_crasher.webp`;
+    case "mp_rr_arena_phase_runner": return `${IMAGE_BASE_URL}/maps/mp_rr_arena_phase_runner.png`;
+    case "mp_rr_olympus_mu1": return `${IMAGE_BASE_URL}/maps/mp_rr_olympus_mu1.png`;
+    case "mp_flowstate": return `${IMAGE_BASE_URL}/maps/mp_flowstate.png`;
+    case "mp_rr_arena_empty": return `${IMAGE_BASE_URL}/maps/mp_rr_arena_empty.png`;
+    case "mp_rr_construct": return `${IMAGE_BASE_URL}/maps/mp_rr_construct.png`;
+    case "mp_rr_desertlands_holiday": return `${IMAGE_BASE_URL}/maps/mp_rr_desertlands_holiday.png`;
+    default: return `${IMAGE_BASE_URL}/maps/default.png`;
+  }
+};
+
+export const flagImage = (code?: string | null): string => {
+  const normalized = code?.trim().toLowerCase() ?? "";
+  const fileName = /^[a-z]{2}$/.test(normalized) ? normalized : "xx";
+  return `${IMAGE_BASE_URL}/flags/${fileName}.svg`;
+};
+
 const WEAPON_ZH: Record<string, string> = {
   alternator: "转换者冲锋枪",
   "charge rifle": "充能步枪",
