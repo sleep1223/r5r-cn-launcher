@@ -44,8 +44,15 @@ Do not bump versions unless explicitly requested. A release bump must update `pa
 
 For a version bump, run only these two local validation commands before committing or pushing:
 
-- `cargo check --manifest-path src-tauri/Cargo.toml --lib --locked`
-- `pnpm exec tsc --noEmit --incremental false`
+- From `src-tauri/`: `cargo +stable-x86_64-pc-windows-gnu check --lib --locked`
+- From the repository root: `pnpm exec tsc --noEmit --incremental false`
+
+In a shell starting at the repository root, the Rust gate is:
+
+```powershell
+cd src-tauri
+cargo +stable-x86_64-pc-windows-gnu check --lib --locked
+```
 
 Do not run local compile, build, bundle, or test commands as part of a version bump. In particular, do not run `cargo test`, `cargo build`, `pnpm build`, `pnpm tauri dev`, or `pnpm tauri build`. The two check-only commands above are the complete local release gate. Both commands must pass before committing, tagging, or pushing anything to GitHub.
 
