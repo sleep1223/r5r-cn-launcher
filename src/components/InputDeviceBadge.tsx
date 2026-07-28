@@ -11,7 +11,7 @@ function deviceMeta(device?: InputDevice | string | null) {
   if (normalized === "controller" || normalized === "gamepad") {
     return {
       icon: "🎮",
-      label: "手柄",
+      label: "控制器",
       className: "bg-purple-500/10 text-purple-200 border-purple-400/20",
     };
   }
@@ -23,7 +23,7 @@ function deviceMeta(device?: InputDevice | string | null) {
   ) {
     return {
       icon: "⌨",
-      label: "键鼠",
+      label: "鼠标/键盘",
       className: "bg-blue-500/10 text-blue-200 border-blue-400/20",
     };
   }

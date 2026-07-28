@@ -40,9 +40,9 @@ type GroupFilter = "all" | ConfigSection;
 
 const GAME_LABEL: Record<ConfigGame, string> = { apex: "Apex", r5: "R5" };
 const SECTION_LABEL: Record<ConfigSection, string> = {
-  mouse_keyboard: "键鼠",
-  controller: "手柄",
-  fov: "FOV",
+  mouse_keyboard: "鼠标/键盘",
+  controller: "控制器",
+  fov: "视野 (FOV)",
 };
 
 interface PendingApply {
@@ -361,9 +361,9 @@ function LocalComparison({
             {(
               [
                 ["all", "全部"],
-                ["mouse_keyboard", "键鼠"],
-                ["controller", "手柄"],
-                ["fov", "FOV"],
+                ["mouse_keyboard", SECTION_LABEL.mouse_keyboard],
+                ["controller", SECTION_LABEL.controller],
+                ["fov", SECTION_LABEL.fov],
               ] as const
             ).map(([id, label]) => (
               <FilterPill key={id} active={filter === id} onClick={() => setFilter(id)}>
@@ -750,8 +750,8 @@ function CommunityBrowser({
             {(
               [
                 ["all", "全部"],
-                ["mouse_keyboard", "包含键鼠"],
-                ["controller", "包含手柄"],
+                ["mouse_keyboard", `包含${SECTION_LABEL.mouse_keyboard}`],
+                ["controller", `包含${SECTION_LABEL.controller}`],
               ] as const
             ).map(([id, label]) => (
               <FilterPill
@@ -1094,7 +1094,7 @@ function UploadManager({
           required
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="例如：低敏全倍镜配置"
+          placeholder="例如：低灵敏度全瞄具配置"
         />
         <label className="block text-xs text-white/55 mb-1.5 mt-4" htmlFor="preset-remark">备注</label>
         <textarea

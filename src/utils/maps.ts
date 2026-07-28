@@ -1,40 +1,40 @@
 export const gamemodeName = (playlist?: string | null): string => {
   switch (playlist) {
-    case "fs_dm": return "FFA";
-    case "fs_prophunt": return "Prophunt";
-    case "fs_1v1": return "1v1";
-    case "fs_duckhunt": return "Duckhunt";
-    case "fs_mantlejumppractice": return "Mantle Jump";
-    case "fs_infected": return "Infected";
-    case "custom_tdm": return "TDM";
-    case "custom_ctf": return "CTF";
-    case "survival": return "Battle Royal";
-    case "fs_movementgym": return "Movement Gym";
-    case "fs_survival_solos": return "BR Solo";
-    case "fs_vamp_1v1": return "Vamp 1v1";
-    case "fs_realistic_ttv": return "Realistic FFA";
-    case "fs_dm_fast_instagib": return "Instagib";
+    case "fs_dm": return "自由混战";
+    case "fs_prophunt": return "道具躲猫猫";
+    case "fs_1v1": return "1 对 1";
+    case "fs_duckhunt": return "猎鸭";
+    case "fs_mantlejumppractice": return "攀爬跳练习";
+    case "fs_infected": return "感染模式";
+    case "custom_tdm": return "团队死斗";
+    case "custom_ctf": return "夺旗";
+    case "survival": return "大逃杀";
+    case "fs_movementgym": return "身法训练场";
+    case "fs_survival_solos": return "单人赛";
+    case "fs_vamp_1v1": return "吸血 1 对 1";
+    case "fs_realistic_ttv": return "拟真自由混战";
+    case "fs_dm_fast_instagib": return "一击必杀";
     default: return playlist || "";
   }
 };
 
 export const mapName = (map?: string | null): string => {
   switch (map) {
-    case "mp_rr_canyonlands_staging": return "Firing Range";
-    case "mp_rr_aqueduct": return "Overflow";
-    case "mp_rr_aqueduct_night": return "Overflow After Dark";
-    case "mp_rr_ashs_redemption": return "Ashs Redemption";
-    case "mp_rr_canyonlands_64k_x_64k": return "Kings Canyon S1";
-    case "mp_rr_canyonlands_mu1": return "Kings Canyon S2";
-    case "mp_rr_canyonlands_mu1_night": return "Kings Canyon S2 After Dark";
-    case "mp_rr_desertlands_64k_x_64k": return "Worlds Edge";
-    case "mp_rr_desertlands_64k_x_64k_nx": return "Worlds Edge After Dark";
-    case "mp_rr_desertlands_64k_x_64k_tt": return "Worlds Edge Mirage Voyage";
-    case "mp_rr_arena_composite": return "Drop Off";
-    case "mp_rr_arena_skygarden": return "Encore";
-    case "mp_rr_party_crasher": return "Party Crasher";
-    case "mp_lobby": return "Lobby";
-    case "mp_rr_arena_phase_runner": return "Phase Runner";
+    case "mp_rr_canyonlands_staging": return "射击场";
+    case "mp_rr_aqueduct": return "熔岩流";
+    case "mp_rr_aqueduct_night": return "夜间熔岩流";
+    case "mp_rr_ashs_redemption": return "艾许的救赎";
+    case "mp_rr_canyonlands_64k_x_64k": return "诸王峡谷（第 1 赛季）";
+    case "mp_rr_canyonlands_mu1": return "诸王峡谷（第 2 赛季）";
+    case "mp_rr_canyonlands_mu1_night": return "夜间诸王峡谷（第 2 赛季）";
+    case "mp_rr_desertlands_64k_x_64k": return "世界尽头";
+    case "mp_rr_desertlands_64k_x_64k_nx": return "夜间世界尽头";
+    case "mp_rr_desertlands_64k_x_64k_tt": return "世界尽头：幻象游轮";
+    case "mp_rr_arena_composite": return "原料场";
+    case "mp_rr_arena_skygarden": return "再来一次";
+    case "mp_rr_party_crasher": return "派对破坏者";
+    case "mp_lobby": return "大厅";
+    case "mp_rr_arena_phase_runner": return "相位穿梭器";
     default: return map || "";
   }
 };

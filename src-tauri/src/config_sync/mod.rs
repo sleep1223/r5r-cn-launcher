@@ -465,9 +465,9 @@ fn field_definitions() -> Vec<FieldDefinition> {
     ];
     for (index, optic) in OPTIC_NAMES.iter().enumerate() {
         let label = match index {
-            0 => "ADS 鼠标灵敏度倍率（默认 / 1 倍镜）".to_string(),
-            7 => "未使用倍镜的 ADS 鼠标灵敏度倍率（保留项）".to_string(),
-            _ => format!("{optic} ADS 鼠标灵敏度倍率"),
+            0 => "ADS 鼠标灵敏度加成（默认 / 1x 光学缩放 / 瞄具）".to_string(),
+            7 => "未使用瞄具的 ADS 鼠标灵敏度加成（保留项）".to_string(),
+            _ => format!("{optic} ADS 鼠标灵敏度加成"),
         };
         fields.push(field(
             &format!("mouse_zoomed_sensitivity_scalar_{index}"),
@@ -475,7 +475,7 @@ fn field_definitions() -> Vec<FieldDefinition> {
             ConfigSection::MouseKeyboard,
         ));
     }
-    fields.push(field("cl_fovScale", "视野（FOV）", ConfigSection::Fov));
+    fields.push(field("cl_fovScale", "视野 (FOV)", ConfigSection::Fov));
     fields.push(field(
         "gamepad_aim_speed",
         "视线灵敏度",
@@ -483,8 +483,8 @@ fn field_definitions() -> Vec<FieldDefinition> {
     ));
     for (index, optic) in OPTIC_NAMES.iter().enumerate() {
         let label = match index {
-            0 => "ADS 视线灵敏度（默认 / 1 倍镜）".to_string(),
-            7 => "未使用倍镜的 ADS 视线灵敏度（保留项）".to_string(),
+            0 => "ADS 视线灵敏度（默认 / 1x 光学缩放 / 瞄具）".to_string(),
+            7 => "未使用瞄具的 ADS 视线灵敏度（保留项）".to_string(),
             _ => format!("{optic} ADS 视线灵敏度"),
         };
         fields.push(field(
@@ -495,9 +495,9 @@ fn field_definitions() -> Vec<FieldDefinition> {
     }
     for (index, optic) in OPTIC_NAMES.iter().enumerate() {
         let label = if index == 7 {
-            "未使用倍镜的 ADS 灵敏度倍率（保留项）".to_string()
+            "未使用瞄具的 ADS 灵敏度加成（保留项）".to_string()
         } else {
-            format!("{optic} ADS 灵敏度倍率")
+            format!("{optic} ADS 灵敏度加成")
         };
         fields.push(field(
             &format!("gamepad_ads_advanced_sensitivity_scalar_{index}"),
@@ -598,12 +598,12 @@ fn field_definitions() -> Vec<FieldDefinition> {
         ),
         field(
             "gamepad_deadzone_index_look",
-            "视角死区",
+            "视野死角",
             ConfigSection::Controller,
         ),
         field(
             "gamepad_deadzone_index_move",
-            "移动死区",
+            "移动死角",
             ConfigSection::Controller,
         ),
         field(
@@ -613,7 +613,7 @@ fn field_definitions() -> Vec<FieldDefinition> {
         ),
         field(
             "gamepad_trigger_threshold",
-            "扳机死区",
+            "扳机键盲区",
             ConfigSection::Controller,
         ),
     ]);
@@ -621,14 +621,14 @@ fn field_definitions() -> Vec<FieldDefinition> {
 }
 
 const OPTIC_NAMES: [&str; 8] = [
-    "1 倍镜 / 机械瞄具",
-    "2 倍镜",
-    "3 倍镜",
-    "4 倍镜",
-    "6 倍镜",
-    "8 倍镜",
-    "10 倍镜",
-    "未使用倍镜",
+    "1x 光学缩放 / 瞄具",
+    "2x 光学缩放",
+    "3x 光学缩放",
+    "4x 光学缩放",
+    "6x 光学缩放",
+    "8x 光学缩放",
+    "10x 光学缩放",
+    "未使用瞄具",
 ];
 
 fn field(key: &str, label: &str, section: ConfigSection) -> FieldDefinition {
