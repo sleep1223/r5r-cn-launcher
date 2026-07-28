@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components/GlassCard";
 import { getServers, PlayerInServer, ServerListItem } from "../api";
 import {
+  countryCodeFromName,
   countryName,
   flagImage,
   gamemodeName,
@@ -39,7 +40,7 @@ interface PlayerCountryGroup {
 function groupPlayersByCountry(players: PlayerInServer[]): PlayerCountryGroup[] {
   const groups = new Map<string, PlayerInServer[]>();
   for (const player of players) {
-    const code = player.country?.trim().toUpperCase() || "__UNKNOWN__";
+    const code = countryCodeFromName(player.country) || "__UNKNOWN__";
     const group = groups.get(code) ?? [];
     group.push(player);
     groups.set(code, group);
@@ -142,28 +143,6 @@ export function ServersTab() {
     ? [...new Set(servers.map((s) => s.region).filter(Boolean))]
     : [];
 
-  // Sort: lower latency first (unknown/failed pings to the end),
-  // tie-break by has-players, then by higher player count.
-  const latencyOf = (sv: ServerListItem): number => {
-    const p = pings[serverKey(sv)];
-    if (p && p.status === "done" && p.result.ok && p.result.latency_ms != null) {
-      return p.result.latency_ms;
-    }
-    if (typeof sv.ping === "number" && sv.ping > 0) return sv.ping;
-    return Number.POSITIVE_INFINITY;
-  };
-  const sortedServers = servers
-    ? [...servers].sort((a, b) => {
-        const ha = a.player_count > 0 ? 1 : 0;
-        const hb = b.player_count > 0 ? 1 : 0;
-        if (ha !== hb) return hb - ha;
-        const la = latencyOf(a);
-        const lb = latencyOf(b);
-        if (la !== lb) return la - lb;
-        return b.player_count - a.player_count;
-      })
-    : null;
-
   return (
     <div className="p-6 space-y-5">
       {/* Stats bar */}
@@ -197,8 +176,8 @@ export function ServersTab() {
         <div className="text-white/50 text-sm">暂无在线服务器</div>
       )}
 
-      {sortedServers &&
-        sortedServers.map((sv) => {
+      {servers &&
+        servers.map((sv) => {
           const key = serverKey(sv);
           const addr = serverAddr(sv);
           const ping = pings[key];
