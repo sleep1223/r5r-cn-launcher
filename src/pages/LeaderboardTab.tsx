@@ -9,7 +9,7 @@ import {
 import { InputDeviceBadge } from "../components/InputDeviceBadge";
 import { weaponName } from "../utils/maps";
 
-type TimeRange = "today" | "yesterday" | "week" | "month" | "all";
+type TimeRange = "today" | "yesterday" | "week" | "month";
 type Board = "kills" | "weapons";
 
 const RANGES: { value: TimeRange; label: string }[] = [
@@ -17,7 +17,6 @@ const RANGES: { value: TimeRange; label: string }[] = [
   { value: "yesterday", label: "昨日" },
   { value: "week", label: "本周" },
   { value: "month", label: "本月" },
-  { value: "all", label: "全部" },
 ];
 
 export function LeaderboardTab() {

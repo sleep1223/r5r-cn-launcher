@@ -103,19 +103,27 @@ export function Sidebar({ active, onChange }: Props) {
             "w-16 h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-all hover:bg-white/5",
             authOpen ? "bg-white/8 text-white" : "text-white/55",
           )}
-          title={isLoggedIn ? `已登录：${user.player_name}` : "使用 AppKey 登录"}
+          title={isLoggedIn ? `已登录：${user.player_name}` : "密钥登录"}
         >
           {isLoggedIn ? (
             <span className="size-6 rounded-full bg-blue-400/20 flex items-center justify-center text-[11px] font-bold text-blue-200">
               {user.player_name[0]?.toUpperCase()}
             </span>
           ) : (
-            <span className="text-base leading-none" aria-hidden="true">
-              钥
-            </span>
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            >
+              <circle cx="8" cy="15" r="3.5" />
+              <path d="m10.5 12.5 7-7m-2 2 2 2m-4-4 2 2" />
+            </svg>
           )}
           <span className="max-w-14 truncate text-[10px] leading-none">
-            {isLoggedIn ? user.player_name : "登录"}
+            {isLoggedIn ? user.player_name : "密钥登录"}
           </span>
         </button>
 
@@ -162,8 +170,15 @@ export function Sidebar({ active, onChange }: Props) {
             ) : (
               <form onSubmit={handleLogin}>
                 <div className="text-sm font-medium">使用 AppKey 登录</div>
-                <div className="text-[11px] text-white/45 mt-1 mb-3 leading-relaxed">
-                  登录后可使用组队、个人数据和社区配置上传。
+                <div className="mt-1 mb-3 space-y-1.5 text-[11px] leading-relaxed text-white/45">
+                  <p>登录后可使用组队、个人数据和社区配置上传。</p>
+                  <p>
+                    加入 QQ 群 732124612 后，私聊群机器人发送
+                    <span className="mx-1 font-mono text-white/75">
+                      「/绑定 游戏ID」
+                    </span>
+                    ，即可获取 AppKey。
+                  </p>
                 </div>
                 <label
                   htmlFor="sidebar-app-key"
