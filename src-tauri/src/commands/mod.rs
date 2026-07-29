@@ -7,6 +7,7 @@ pub mod diagnostics;
 pub mod install;
 pub mod launch;
 pub mod launch_options;
+pub mod matchmaking_fix;
 pub mod ping;
 pub mod proxy;
 pub mod settings;

@@ -12,6 +12,12 @@ import { openExternalUrl, suggestInstallPath } from "../ipc/settings";
 import { detectAccelerators } from "../ipc/accelerator";
 import { launchGame } from "../ipc/launch";
 import {
+  applyMatchmakingFix,
+  checkMatchmakingFix,
+  MatchmakingFixStatus,
+  restoreMatchmakingFix,
+} from "../ipc/matchmakingFix";
+import {
   cancelInstall,
   checkUpdate,
   pauseInstall,
@@ -59,6 +65,12 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
   const [localVersion, setLocalVersion] = useState<string | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
+  const [matchmakingFix, setMatchmakingFix] =
+    useState<MatchmakingFixStatus | null>(null);
+  const [matchmakingFixBusy, setMatchmakingFixBusy] = useState(false);
+  const [matchmakingFixError, setMatchmakingFixError] = useState<string | null>(
+    null,
+  );
   const [serverStats, setServerStats] = useState<{
     servers: number;
     players: number;
@@ -212,6 +224,31 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
     settings?.mirror_domain,
     settings?.library_root,
     settings?.update_strategy,
+  ]);
+
+  // This workaround is intentionally version-gated in the backend. The Home
+  // tab only renders anything when the installed LIVE build is affected.
+  useEffect(() => {
+    const channel = settings?.selected_channel;
+    if (!channel || !settings?.library_root) {
+      setMatchmakingFix(null);
+      return;
+    }
+    let cancelled = false;
+    checkMatchmakingFix(channel)
+      .then((result) => {
+        if (!cancelled) setMatchmakingFix(result);
+      })
+      .catch(() => {
+        if (!cancelled) setMatchmakingFix(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    settings?.selected_channel,
+    settings?.library_root,
+    settings?.channels,
   ]);
 
   // When an install completes, reload settings (so installed/version flips).
@@ -372,6 +409,22 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
       beginJob(id, true);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleMatchmakingFix = async (restore: boolean) => {
+    if (!settings?.selected_channel) return;
+    setMatchmakingFixBusy(true);
+    setMatchmakingFixError(null);
+    try {
+      const result = restore
+        ? await restoreMatchmakingFix(settings.selected_channel)
+        : await applyMatchmakingFix(settings.selected_channel);
+      setMatchmakingFix(result);
+    } catch (e) {
+      setMatchmakingFixError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMatchmakingFixBusy(false);
     }
   };
 
@@ -916,7 +969,88 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
         </GlassCard>
       )}
 
-      {/* Non-forced update banner — shown at the top, dismissible. */}
+      {matchmakingFix && matchmakingFix.state !== "not_applicable" && (
+        <GlassCard
+          className={
+            matchmakingFix.state === "fixed"
+              ? "border-emerald-400/30 bg-emerald-500/[0.06]"
+              : "border-amber-400/30 bg-amber-500/[0.06]"
+          }
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className={`size-8 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${
+                matchmakingFix.state === "fixed"
+                  ? "bg-emerald-400/15 text-emerald-300"
+                  : "bg-amber-400/15 text-amber-200"
+              }`}
+              aria-hidden="true"
+            >
+              {matchmakingFix.state === "fixed" ? "✓" : "!"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div
+                className={`text-sm font-semibold ${
+                  matchmakingFix.state === "fixed"
+                    ? "text-emerald-200"
+                    : "text-amber-200"
+                }`}
+              >
+                {matchmakingFix.state === "fixed"
+                  ? "匹配退出问题已修复"
+                  : matchmakingFix.state === "unfixed"
+                    ? "当前游戏版本存在匹配退出问题"
+                    : "无法自动检查匹配退出修复"}
+              </div>
+              <div className="mt-1 text-xs leading-relaxed text-white/65 max-w-3xl">
+                {matchmakingFix.state === "fixed"
+                  ? `已为 ${formatGameVersion(matchmakingFix.game_version)} 将 LeaveMatch 调用替换为 disconnect。需要恢复官方原始行为时可在此复原。`
+                  : matchmakingFix.state === "unfixed"
+                    ? `${formatGameVersion(matchmakingFix.game_version)} 的官方客户端存在已知问题，可能导致离开匹配失败。可一键应用兼容修复，后续也能复原。`
+                    : matchmakingFix.state === "file_missing"
+                      ? "未找到 menu_matchmaking_utility.nut，请先校验游戏文件，再重新打开首页。"
+                      : "目标脚本内容与该版本的已知格式不一致。为避免误改，启动器没有自动处理。"}
+              </div>
+              {matchmakingFix.file_path && (
+                <div
+                  className="mt-1.5 text-[11px] text-white/35 font-mono truncate"
+                  title={matchmakingFix.file_path}
+                >
+                  {matchmakingFix.file_path}
+                </div>
+              )}
+              {(matchmakingFix.can_fix || matchmakingFix.can_restore) && (
+                <div className="mt-3">
+                  <PrimaryButton
+                    variant={
+                      matchmakingFix.can_restore ? "secondary" : "warn"
+                    }
+                    onClick={() =>
+                      void handleMatchmakingFix(matchmakingFix.can_restore)
+                    }
+                    disabled={matchmakingFixBusy}
+                  >
+                    {matchmakingFixBusy
+                      ? "处理中…"
+                      : matchmakingFix.can_restore
+                        ? "复原官方文件"
+                        : "立即修复"}
+                  </PrimaryButton>
+                </div>
+              )}
+              {matchmakingFixError && (
+                <div
+                  className="mt-2 text-xs text-red-300"
+                  role="status"
+                  aria-live="polite"
+                >
+                  操作失败：{matchmakingFixError}
+                </div>
+              )}
+            </div>
+          </div>
+        </GlassCard>
+      )}
 
       {!wizardOpen && (
       <GlassCard

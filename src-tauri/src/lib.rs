@@ -10,6 +10,7 @@ pub mod error;
 pub mod events;
 pub mod launch_options;
 pub mod manifest;
+pub mod matchmaking_fix;
 pub mod offline;
 pub mod process;
 pub mod proxy;
@@ -195,6 +196,9 @@ pub fn run() {
             commands::launch_options::validate_launch_args_cmd,
             commands::launch_options::compose_launch_args_cmd,
             commands::launch::launch_game_cmd,
+            commands::matchmaking_fix::check_matchmaking_fix,
+            commands::matchmaking_fix::apply_matchmaking_fix,
+            commands::matchmaking_fix::restore_matchmaking_fix,
             commands::install::start_offline_import,
             commands::install::start_online_install,
             commands::install::start_update,
