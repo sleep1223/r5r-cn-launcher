@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const CURRENT_SCHEMA: u32 = 2;
+pub const MIN_DOWNLOAD_CONCURRENCY: u32 = 1;
+pub const MAX_DOWNLOAD_CONCURRENCY: u32 = 100;
 
 /// How updates resolve mismatched files. `Verify` walks the manifest and
 /// re-downloads anything whose SHA-256 doesn't match — slow but always
@@ -148,6 +150,17 @@ fn default_mirror_domain() -> String {
 fn default_concurrency() -> u32 {
     4
 }
+
+pub const fn normalize_download_concurrency(value: u32) -> u32 {
+    if value < MIN_DOWNLOAD_CONCURRENCY {
+        MIN_DOWNLOAD_CONCURRENCY
+    } else if value > MAX_DOWNLOAD_CONCURRENCY {
+        MAX_DOWNLOAD_CONCURRENCY
+    } else {
+        value
+    }
+}
+
 fn default_dashboard_api_url() -> String {
     DEFAULT_DASHBOARD_API_URL.to_string()
 }
@@ -190,7 +203,16 @@ impl LauncherSettings {
         if self.installation_id.is_empty() {
             self.installation_id = uuid::Uuid::new_v4().to_string();
         }
+        self.normalize_download_concurrency();
         self.schema_version = CURRENT_SCHEMA;
+    }
+
+    pub fn normalize_download_concurrency(&mut self) {
+        self.concurrent_downloads = normalize_download_concurrency(self.concurrent_downloads);
+    }
+
+    pub fn normalized_download_concurrency(&self) -> u32 {
+        normalize_download_concurrency(self.concurrent_downloads)
     }
 
     pub fn install_dir_for(&self, channel_name: &str) -> Option<PathBuf> {
@@ -243,5 +265,15 @@ mod tests {
         migrated.save(dir.path()).unwrap();
         let reloaded = LauncherSettings::load_or_default(dir.path()).unwrap();
         assert_eq!(reloaded.installation_id, migrated.installation_id);
+    }
+
+    #[test]
+    fn download_concurrency_is_normalized_to_supported_range() {
+        assert_eq!(normalize_download_concurrency(0), MIN_DOWNLOAD_CONCURRENCY);
+        assert_eq!(normalize_download_concurrency(42), 42);
+        assert_eq!(
+            normalize_download_concurrency(MAX_DOWNLOAD_CONCURRENCY + 1),
+            MAX_DOWNLOAD_CONCURRENCY
+        );
     }
 }

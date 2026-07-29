@@ -11,10 +11,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
-
-const MAX_PARTS_PER_FILE: usize = 8;
 
 /// Download all chunks of a multi-part file in parallel, then merge them
 /// sequentially into the final destination and clean up the temp parts.
@@ -39,14 +36,8 @@ pub async fn download_chunked(
     agg.set_current_file(&crate::util::normalize_slashes(&entry.path));
 
     // ===== Parallel chunk download =====
-    let chunk_sem = Arc::new(Semaphore::new(MAX_PARTS_PER_FILE));
     let mut futs = FuturesUnordered::new();
     for (idx, part) in entry.parts.iter().enumerate() {
-        let permit = chunk_sem
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| AppError::other(e.to_string()))?;
         let part = part.clone();
         let client = client.clone();
         let channel_clone = channel.clone();
@@ -56,7 +47,6 @@ pub async fn download_chunked(
         let tmp_root = tmp_root.clone();
         let retry = *retry;
         futs.push(tokio::spawn(async move {
-            let _permit = permit;
             // Local part filename — use the index so merge order is deterministic.
             let part_dest = tmp_root.join(format!("part_{:06}.bin", idx));
             let url = entry_url(&channel_clone, &part.path);
@@ -117,7 +107,6 @@ pub async fn download_chunked(
         }
     }
     out.flush().await?;
-    out.sync_all().await?;
 
     // tmpdir auto-cleans on Drop.
     agg.finish_file(&entry.path);

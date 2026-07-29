@@ -24,6 +24,7 @@ import {
 } from "@tauri-apps/plugin-dialog";
 
 const CUSTOM_OPTION = "__custom__";
+const DOWNLOAD_CONCURRENCY_OPTIONS = [1, 5, 10, 15, 20, 50, 75, 100];
 
 interface SettingsTabProps {
   focusDiagnostics?: boolean;
@@ -597,18 +598,24 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="⬇"
           title="下载并发数"
-          subtitle="同时下载的文件数量，建议设置为 4 至 8。"
+          subtitle="同时下载的文件数量。高并发能提高吞吐，也会增加网络与磁盘负载。"
         />
-        <div className="flex items-center gap-4">
-          <input
-            type="range"
-            min={1}
-            max={16}
+        <div className="flex items-center gap-3">
+          <select
             value={concurrency}
             onChange={(e) => setConcurrency(Number(e.target.value))}
-            className="flex-1"
-          />
-          <div className="w-10 text-right tabular-nums">{concurrency}</div>
+            className="w-full"
+          >
+            {!DOWNLOAD_CONCURRENCY_OPTIONS.includes(concurrency) && (
+              <option value={concurrency}>{concurrency}（当前设置）</option>
+            )}
+            {DOWNLOAD_CONCURRENCY_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+                {value === 100 ? "（最高）" : ""}
+              </option>
+            ))}
+          </select>
         </div>
       </GlassCard>
 

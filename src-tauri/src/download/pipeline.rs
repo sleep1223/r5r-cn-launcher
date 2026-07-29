@@ -25,6 +25,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
+const MAX_SCAN_CONCURRENCY: u32 = 8;
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -102,7 +104,7 @@ pub async fn run_install(
             s.dashboard_api_url.clone(),
             s.library_root.clone(),
             vec!["schinese".to_string()],
-            s.concurrent_downloads.max(1),
+            s.normalized_download_concurrency(),
             s.update_strategy,
             s.download_hd_textures,
         )
@@ -352,9 +354,11 @@ pub async fn run_install(
         })
     };
 
-    // Hash existing files concurrently — bound by concurrent_downloads so we
-    // don't thrash the disk on slow drives.
-    let scan_sem = Arc::new(Semaphore::new(concurrent_downloads as usize));
+    // Hash existing files concurrently, but keep disk work capped separately
+    // from the network setting so high download concurrency does not thrash
+    // slow drives.
+    let scan_concurrency = concurrent_downloads.min(MAX_SCAN_CONCURRENCY);
+    let scan_sem = Arc::new(Semaphore::new(scan_concurrency as usize));
     let scan_results: AppResult<Vec<Option<ManifestEntry>>> = async {
         let mut futs = FuturesUnordered::new();
         for entry in candidates.iter().cloned() {

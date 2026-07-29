@@ -20,6 +20,7 @@ pub async fn save_settings(
     // by the webview so ordinary settings saves cannot rotate or forge it.
     settings.installation_id = state.settings.read().installation_id.clone();
     settings.schema_version = crate::config::settings::CURRENT_SCHEMA;
+    settings.normalize_download_concurrency();
 
     // If proxy mode changed, rebuild the HTTP client BEFORE persisting, so a
     // failed rebuild surfaces as an error and we don't accept a bad config.

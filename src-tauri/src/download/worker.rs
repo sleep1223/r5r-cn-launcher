@@ -85,7 +85,6 @@ pub async fn stream_download(
         }
     }
     file.flush().await?;
-    file.sync_all().await?;
     Ok(())
 }
 
