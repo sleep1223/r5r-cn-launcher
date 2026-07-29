@@ -372,7 +372,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="🌐"
           title="网络代理"
-          subtitle="代理切换会立即重建 HTTP 客户端，但已经在下载中的文件不会被打断。"
+          subtitle="选择启动器访问网络时使用的代理。"
         />
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -409,7 +409,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
               {busy === "test" ? "测试中…" : "测试连通性"}
             </PrimaryButton>
             <span className="text-xs text-white/40 self-center">
-              未填写镜像源时会用官方 CDN 进行测试。
+              未设置镜像源时测试官方 CDN。
             </span>
           </div>
           {proxyResult && (
@@ -433,7 +433,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="🪞"
           title="镜像源"
-          subtitle="镜像 CDN 域名，修改后会自动保存。"
+          subtitle="用于获取游戏版本和校验信息。"
         />
         <input
           type="text"
@@ -441,11 +441,6 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
           value={mirrorDomain}
           onChange={(e) => setMirrorDomain(e.target.value)}
         />
-        {mirrorDomain.trim() && (
-          <div className="text-xs text-white/40 mt-1 font-mono">
-            校验文件：https://{mirrorDomain.trim()}/launcher/live_game/checksums.json
-          </div>
-        )}
       </GlassCard>
 
       {/* 更新方式 */}
@@ -453,7 +448,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="↻"
           title="更新方式"
-          subtitle="点击「更新」时如何处理已变化的文件。默认优先使用体积更小、速度更快的补丁包。"
+          subtitle="选择游戏文件的更新方式。"
         />
         <div className="flex gap-2">
           {(["patch", "verify"] as const).map((s) => (
@@ -473,7 +468,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         </div>
         {updateStrategy === "patch" && (
           <div className="text-xs text-white/50 mt-2">
-            补丁包仅支持从当前版本直接更新到最新版本；没有匹配的补丁时，将自动切换为完整校验。
+            优先下载版本差异，无法使用时自动校验文件。
           </div>
         )}
       </GlassCard>
@@ -483,7 +478,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="🖼️"
           title="HD 高清纹理"
-          subtitle="可选的 *.opt.starpak 纹理包，体积较大。关闭时安装/校验会跳过，与官方启动器一致。"
+          subtitle="提供更清晰的纹理，需要更多磁盘空间和下载流量。"
         />
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -500,8 +495,8 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
       <GlassCard>
         <SectionHeader
           icon="🎮"
-          title="启动器启动时打开 EA App"
-          subtitle="打开本启动器时会在后台尝试启动 EA App；点击「启动游戏」时只校验 EA App 是否仍在运行，以及当前 Windows 用户下是否已有 EA 登录档案。未运行或未登录会中止启动。"
+          title="自动打开 EA App"
+          subtitle="打开启动器时同步启动 EA App。"
         />
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -510,7 +505,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
             onChange={(e) => setLaunchViaEaApp(e.target.checked)}
             className="h-4 w-4 accent-blue-400"
           />
-          <span className="text-sm text-white/80">随启动器打开 EA App</span>
+          <span className="text-sm text-white/80">启用自动打开</span>
         </label>
       </GlassCard>
 
@@ -519,7 +514,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="◉"
           title="匿名使用统计"
-          subtitle="用于统计启动器首次使用人数。仅发送随机安装 UUID、启动器版本、操作系统和架构；不读取硬件指纹、游戏账号或 AppKey。"
+          subtitle="帮助了解启动器的使用情况。"
         />
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -528,7 +523,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
             onChange={(e) => setUsageReportingEnabled(e.target.checked)}
             className="h-4 w-4 accent-blue-400"
           />
-          <span className="text-sm text-white/80">允许匿名首次使用统计</span>
+          <span className="text-sm text-white/80">参与匿名统计</span>
         </label>
       </GlassCard>
 
@@ -602,7 +597,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="⬇"
           title="下载并发数"
-          subtitle="同时下载多少个文件。每个分块文件内部最多 8 个并发分块。建议 4-8。"
+          subtitle="同时下载的文件数量，建议设置为 4 至 8。"
         />
         <div className="flex items-center gap-4">
           <input
@@ -623,7 +618,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
           <SectionHeader
             icon="⚒"
             title="高级"
-            subtitle="崩溃诊断包仅保存在你选择的位置，不会自动上传。包内包含最新游戏会话日志、电脑配置、Windows 用户名和运行中的进程名。"
+            subtitle="生成用于排查崩溃的诊断包，并保存到你选择的位置。"
           />
           <div className="flex flex-wrap gap-2">
             <PrimaryButton
@@ -663,7 +658,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
               {diagnosticResult.risky_applications.length > 0 && (
                 <div className="mt-3">
                   <div className="font-medium text-amber-200">
-                    检测到可能导致崩溃的悬浮或注入类应用
+                    发现可能冲突的应用
                   </div>
                   <ul className="mt-1 space-y-1 text-xs text-amber-100/80">
                     {diagnosticResult.risky_applications.map((app) => (
@@ -673,9 +668,8 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
                     ))}
                   </ul>
                   <div className="mt-2 text-xs leading-relaxed text-white/70">
-                    请先关闭这些应用的游戏内覆盖、性能监控和录制功能；可以退出的应用请完全退出，然后再次复现。若仍然崩溃，请加入
-                    QQ 群 732124612，在群内 @QQ
-                    1259332131，发送诊断包并说明崩溃前的操作及是否可以稳定复现。
+                    请关闭这些应用后重试。若仍然崩溃，请在 QQ 群
+                    732124612 联系 1259332131，并发送诊断包和复现步骤。
                   </div>
                 </div>
               )}
@@ -683,14 +677,13 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
                 <div className="mt-2 text-xs text-white/60">
                   最新日志目录未找到：
                   {diagnosticResult.missing_crash_files.join("、")}
-                  。请在游戏崩溃后重新收集。
+                  。请在崩溃后重新收集。
                 </div>
               )}
               {diagnosticResult.risky_applications.length === 0 && (
                 <div className="mt-2 text-xs leading-relaxed text-white/70">
-                  未检测到已知风险应用。请加入 QQ 群
-                  732124612，在群内 @QQ
-                  1259332131，发送诊断包并说明崩溃前的操作及是否可以稳定复现。
+                  未发现明显冲突。请在 QQ 群 732124612 联系
+                  1259332131，并发送诊断包和复现步骤。
                 </div>
               )}
               <div className="mt-3">
