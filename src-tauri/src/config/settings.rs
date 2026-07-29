@@ -42,9 +42,9 @@ pub struct LauncherSettings {
 
     /// Low-traffic metadata domain (e.g. `cdn-r5r-org.sleep0.de`). Used for
     /// `checksums.json`, `version.txt`, and the connectivity probe — URLs are
-    /// `https://{mirror_domain}/launcher/{channel}/...`. Actual game files are
-    /// served from `dashboard.download_domain` instead; this domain is only
-    /// the fallback when the dashboard is unreachable or doesn't supply one.
+    /// `https://{mirror_domain}/launcher/{channel}/...`. When configured,
+    /// actual game files use `dashboard.download_domain`; when empty, metadata
+    /// and game files use the official CDN.
     #[serde(default = "default_mirror_domain", alias = "root_config_url")]
     pub mirror_domain: String,
 
@@ -246,6 +246,11 @@ mod tests {
             LauncherSettings::default().update_strategy,
             UpdateStrategy::Patch
         );
+    }
+
+    #[test]
+    fn download_concurrency_defaults_to_four() {
+        assert_eq!(LauncherSettings::default().concurrent_downloads, 4);
     }
 
     #[test]

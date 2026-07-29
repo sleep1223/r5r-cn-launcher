@@ -1,5 +1,5 @@
 use crate::config::local_version::{normalize_community_version, read_build_version};
-use crate::config::{Channel, UpdateStrategy};
+use crate::config::{Channel, UpdateStrategy, OFFICIAL_DOMAIN};
 use crate::dashboard::fetch_dashboard_config;
 use crate::download::chunk::download_chunked;
 use crate::download::patch::{apply_patch, PatchOutcome};
@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 const MAX_SCAN_CONCURRENCY: u32 = 8;
@@ -87,8 +88,9 @@ pub async fn run_install(
         format!("开始安装频道 {}", channel_name),
     );
 
-    // 1. Resolve the metadata channel from the saved mirror domain. This is
-    //    the low-traffic surface (`checksums.json` + `version.txt`).
+    // 1. Resolve the low-traffic metadata channel (`checksums.json` +
+    //    `version.txt`) from the configured mirror, or the official CDN when
+    //    no mirror is configured.
     let (
         mirror_domain,
         dashboard_url,
@@ -109,14 +111,17 @@ pub async fn run_install(
             s.download_hd_textures,
         )
     };
-    if mirror_domain.is_empty() {
-        return Err(AppError::settings("尚未配置镜像源域名"));
-    }
     if library_root.is_empty() {
         return Err(AppError::settings("尚未配置安装根目录"));
     }
 
-    let channel = Channel::from_domain(&mirror_domain, &channel_name);
+    let mirror_configured = !mirror_domain.trim().is_empty();
+    let metadata_domain = if mirror_configured {
+        mirror_domain.trim()
+    } else {
+        OFFICIAL_DOMAIN
+    };
+    let channel = Channel::from_domain(metadata_domain, &channel_name);
     emit_log(
         &app,
         &job_id,
@@ -461,19 +466,37 @@ pub async fn run_install(
 
     // 6. Execute downloads.
     //
-    // Resolve the high-traffic download channel from the dashboard's
-    // `download_domain`. Falls back to the mirror domain if the dashboard is
-    // unreachable or doesn't return one — keeps installs working when the
-    // community endpoint is degraded.
-    let download_channel = resolve_download_channel(
-        &app,
-        &job_id,
-        &client,
-        &dashboard_url,
-        &channel,
-        &channel_name,
-    )
-    .await;
+    // A configured metadata mirror opts into the dashboard-managed game-file
+    // domain. Without a configured mirror, the official CDN is the primary
+    // source. A dashboard failure in mirror mode is fatal and never falls
+    // through to another domain.
+    let download_channel = if mirror_configured {
+        match resolve_download_channel(&app, &job_id, &client, &dashboard_url, &channel_name).await
+        {
+            Ok(channel) => channel,
+            Err(e) => {
+                emit_log(
+                    &app,
+                    &job_id,
+                    LogLevel::Error,
+                    format!("获取游戏下载域名失败: {}", e),
+                );
+                emit(InstallPhase::Failed {
+                    reason: e.to_string(),
+                });
+                return Err(e);
+            }
+        }
+    } else {
+        let channel = Channel::from_domain(OFFICIAL_DOMAIN, &channel_name);
+        emit_log(
+            &app,
+            &job_id,
+            LogLevel::Info,
+            format!("未设置镜像源，使用官方游戏下载源: {}", channel.game_url),
+        );
+        channel
+    };
 
     let total_bytes: u64 = plan.iter().map(|e| e.size).sum();
     let agg = ProgressAggregator::new(job_id.clone(), plan.len(), total_bytes);
@@ -492,34 +515,21 @@ pub async fn run_install(
         ),
     );
 
-    let sem = Arc::new(Semaphore::new(concurrent_downloads as usize));
     let retry_full = RetryPolicy::full_file();
     let retry_chunk = RetryPolicy::chunk();
 
-    let mut futs = FuturesUnordered::new();
-    for entry in plan.iter().cloned() {
-        if cancel.is_cancelled() {
-            break;
-        }
-        // Pause the outer dispatch loop — no point burning semaphore permits
-        // while the user wants the pipeline frozen.
-        pause.wait().await;
-        if cancel.is_cancelled() {
-            break;
-        }
-        let permit = sem
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| AppError::other(e.to_string()))?;
+    let spawn_download = |tasks: &mut JoinSet<AppResult<()>>, entry: ManifestEntry| {
         let client = client.clone();
         let download_channel = download_channel.clone();
         let install_dir = install_dir.clone();
         let agg = agg.clone();
         let cancel = cancel.clone();
         let pause = pause.clone();
-        futs.push(tokio::spawn(async move {
-            let _permit = permit;
+        tasks.spawn(async move {
+            pause.wait().await;
+            if cancel.is_cancelled() {
+                return Err(AppError::Cancelled);
+            }
             if entry.parts.is_empty() {
                 download_single(
                     &client,
@@ -545,17 +555,46 @@ pub async fn run_install(
                 )
                 .await
             }
-        }));
+        });
+    };
+
+    // Keep only `concurrent_downloads` tasks alive at once and replenish the
+    // window as each task finishes. Polling completions while dispatching is
+    // important: the previous semaphore loop queued every manifest entry
+    // before it observed the first HTTP error, which could cycle through
+    // thousands of failed small-file requests while progress remained at 0 B.
+    let mut entries = plan.iter().cloned();
+    let mut tasks = JoinSet::new();
+    for _ in 0..concurrent_downloads {
+        let Some(entry) = entries.next() else {
+            break;
+        };
+        spawn_download(&mut tasks, entry);
     }
 
     let mut first_err: Option<AppError> = None;
-    while let Some(joined) = futs.next().await {
-        let r: AppResult<()> = joined.map_err(|e| AppError::other(e.to_string()))?;
-        if let Err(e) = r {
-            if first_err.is_none() {
-                first_err = Some(e);
+    while let Some(joined) = tasks.join_next().await {
+        match joined {
+            Ok(Ok(())) => {
+                if !cancel.is_cancelled() && first_err.is_none() {
+                    if let Some(entry) = entries.next() {
+                        spawn_download(&mut tasks, entry);
+                    }
+                }
             }
-            cancel.cancel(); // stop the rest fast
+            Ok(Err(AppError::Cancelled)) => {}
+            Ok(Err(e)) => {
+                if first_err.is_none() {
+                    first_err = Some(e);
+                    cancel.cancel();
+                }
+            }
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(AppError::other(e.to_string()));
+                    cancel.cancel();
+                }
+            }
         }
     }
     emitter_handle.abort();
@@ -626,58 +665,30 @@ pub async fn run_install(
     Ok(())
 }
 
-/// Pick the `Channel` whose `game_url` will be hit for actual file bytes.
-/// Prefers `dashboard.download_domain`; degrades to the metadata `mirror`
-/// channel if the dashboard endpoint is missing, unreachable, or returns an
-/// empty `download_domain`. Failure here is non-fatal — installs must keep
-/// working when the community endpoint is degraded.
+/// Build the game-file channel strictly from the dashboard API's
+/// `download_domain`. No normalization, probing, or fallback is applied.
 async fn resolve_download_channel(
     app: &AppHandle,
     job_id: &str,
     client: &Client,
     dashboard_url: &str,
-    mirror: &Channel,
     channel_name: &str,
-) -> Channel {
-    if dashboard_url.is_empty() {
-        emit_log(
-            app,
-            job_id,
-            LogLevel::Warn,
-            "未配置数据面板地址，下载将复用镜像源域名",
-        );
-        return mirror.clone();
+) -> AppResult<Channel> {
+    let dashboard = fetch_dashboard_config(client, dashboard_url).await?;
+    let domain = dashboard.download_domain.trim();
+    if domain.is_empty() {
+        return Err(AppError::http("数据面板响应中的 download_domain 为空"));
     }
-    match fetch_dashboard_config(client, dashboard_url).await {
-        Ok(dc) => {
-            let dd = dc.download_domain.trim();
-            if dd.is_empty() {
-                emit_log(
-                    app,
-                    job_id,
-                    LogLevel::Warn,
-                    "数据面板未返回 download_domain，下载将复用镜像源域名",
-                );
-                mirror.clone()
-            } else {
-                let ch = Channel::from_domain(dd, channel_name);
-                emit_log(
-                    app,
-                    job_id,
-                    LogLevel::Info,
-                    format!("下载源 (download_domain={})", ch.game_url),
-                );
-                ch
-            }
-        }
-        Err(e) => {
-            emit_log(
-                app,
-                job_id,
-                LogLevel::Warn,
-                format!("拉取数据面板失败 ({})，下载将复用镜像源域名", e),
-            );
-            mirror.clone()
-        }
-    }
+
+    let channel = Channel::from_domain(domain, channel_name);
+    emit_log(
+        app,
+        job_id,
+        LogLevel::Info,
+        format!(
+            "游戏下载源 (dashboard.download_domain={}): {}",
+            domain, channel.game_url
+        ),
+    );
+    Ok(channel)
 }

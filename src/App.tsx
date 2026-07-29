@@ -104,14 +104,17 @@ function App() {
             }}
           />
           <main className="flex-1 overflow-y-auto">
-            {tab === "home" && (
+            {/* Keep HomeTab mounted while navigating. Active install job IDs,
+                progress subscriptions, pause state, and logs live in this
+                component and must survive a temporary tab switch. */}
+            <div className={tab === "home" ? "block" : "hidden"}>
               <HomeTab
                 onOpenDiagnostics={() => {
                   setFocusDiagnostics(true);
                   setTab("settings");
                 }}
               />
-            )}
+            </div>
             {tab === "servers" && <ServersTab />}
             {tab === "leaderboard" && <LeaderboardTab />}
             {tab === "apex" && <ApexTab />}

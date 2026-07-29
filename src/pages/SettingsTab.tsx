@@ -24,7 +24,7 @@ import {
 } from "@tauri-apps/plugin-dialog";
 
 const CUSTOM_OPTION = "__custom__";
-const DOWNLOAD_CONCURRENCY_OPTIONS = [1, 5, 10, 15, 20, 50, 75, 100];
+const DOWNLOAD_CONCURRENCY_OPTIONS = [1, 4, 5, 10, 15, 20, 50, 75, 100];
 
 interface SettingsTabProps {
   focusDiagnostics?: boolean;
@@ -434,7 +434,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="🪞"
           title="镜像源"
-          subtitle="用于获取游戏版本和校验信息。"
+          subtitle="用于获取版本和校验信息；留空则使用官方 CDN。"
         />
         <input
           type="text"
@@ -598,7 +598,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="⬇"
           title="下载并发数"
-          subtitle="同时下载的文件数量。高并发能提高吞吐，也会增加网络与磁盘负载。"
+          subtitle="默认同时下载 4 个文件；大量小文件可使用 50 或 100。"
         />
         <div className="flex items-center gap-3">
           <select
@@ -612,7 +612,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
             {DOWNLOAD_CONCURRENCY_OPTIONS.map((value) => (
               <option key={value} value={value}>
                 {value}
-                {value === 100 ? "（最高）" : ""}
+                {value === 4 ? "（默认）" : value === 100 ? "（最高）" : ""}
               </option>
             ))}
           </select>

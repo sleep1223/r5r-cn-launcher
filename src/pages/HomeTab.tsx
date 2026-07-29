@@ -135,13 +135,10 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pull the community dashboard once on mount. The URL is hardcoded in the
-  // backend (`DEFAULT_DASHBOARD_API_URL`), so there's nothing to configure.
-  // The dashboard is purely informational (announcement / rules / version
-  // badge) and nothing in the install or launch flow depends on it, so we
-  // silently degrade on failure rather than greeting users with a scary
-  // error banner about a server-side outage they cannot fix. The Settings
-  // tab's "测试一下" affordance still surfaces real errors to the maintainer.
+  // Pull the community dashboard once on mount for announcement / rules /
+  // version badges. This display fetch is best-effort; mirror-mode downloads
+  // fetch the dashboard again in the backend and surface failures through the
+  // install progress panel.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -190,14 +187,14 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
 
   // Auto-select the default channel if none is set.
   useEffect(() => {
-    if (!settings?.mirror_domain || settings.selected_channel) return;
+    if (!settings || settings.selected_channel) return;
     update({ selected_channel: "LIVE" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.mirror_domain, settings?.selected_channel]);
+  }, [settings?.selected_channel]);
 
   // Check for updates when channel/install state changes.
   useEffect(() => {
-    if (!settings?.selected_channel || !settings?.mirror_domain) {
+    if (!settings?.selected_channel) {
       setUpdateAvailable(null);
       setLocalVersion(null);
       return;
@@ -320,7 +317,7 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
     // launching from it over going through install/update flows — the user
     // already has the game on disk, no need to re-download via the mirror.
     if (launchableDetected) return "play";
-    if (!settings.mirror_domain || !settings.library_root) {
+    if (!settings.library_root) {
       // Not configured for online install — but if a detected install exists,
       // user can still launch the game using compose options.
       if (detected && detected.length > 0) return "play";
@@ -525,7 +522,7 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
       case "play":
         return "▶ 启动游戏";
       case "blocked":
-        return "请先在【设置】中配置代理与镜像";
+        return "请先在【设置】中配置安装目录";
     }
   };
   const actionVariant = (a: Action) => {
@@ -1073,7 +1070,7 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
               )}
             </div>
 
-            {settings?.mirror_domain && (
+            {settings && (
               <div className="mt-6 flex items-center gap-2 flex-wrap text-[11px] tabular-nums">
                 {/* Channel pill */}
                 <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-400/40 bg-blue-400/10 text-white font-medium">

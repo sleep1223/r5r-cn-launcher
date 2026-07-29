@@ -72,8 +72,12 @@ export function InstallProgress({
 
   const hasBytes = progress.bytes_total > 0;
   const hasFiles = progress.file_count > 0;
-  const hasSpeed = !isFinal && progress.speed_bps > 0;
-  const hasEta = !isFinal && progress.eta_seconds > 0 && hasBytes;
+  // The backend publishes a fresh speed sample every 200ms, but the pause
+  // button updates locally first. Hide the last in-flight sample immediately
+  // instead of briefly showing stale throughput/ETA after pausing.
+  const hasSpeed = !paused && !isFinal && progress.speed_bps > 0;
+  const hasEta =
+    !paused && !isFinal && progress.eta_seconds > 0 && hasBytes;
   // Streaming zip import doesn't know totals up-front but still pushes a
   // running bytes/file counter — show those as "已处理" even without a total.
   const runningBytes = progress.bytes_done > 0;

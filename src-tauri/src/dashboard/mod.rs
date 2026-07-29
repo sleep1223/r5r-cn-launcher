@@ -4,9 +4,9 @@
 //!
 //! This is a separate channel from the official R5R `RemoteConfig` (which is
 //! the wire-compatible mirror config). Beyond powering the Home tab UI, the
-//! `download_domain` field here is what actually serves game files — the saved
-//! `mirror_domain` in settings is reserved for low-traffic metadata
-//! (`checksums.json`, `version.txt`, connectivity probe).
+//! When a metadata mirror is configured, `download_domain` is the only domain
+//! used for game files. Without a configured mirror, the launcher uses the
+//! official CDN directly.
 
 use crate::error::{AppError, AppResult};
 use reqwest::Client;
@@ -19,7 +19,7 @@ pub struct DashboardConfig {
     #[serde(default)]
     pub offline_package_url: String,
     /// CDN domain that serves game files (chunked downloads + full files).
-    /// Empty means "fall back to the saved `mirror_domain`".
+    /// Required when the user has configured a metadata mirror.
     #[serde(default)]
     pub download_domain: String,
     #[serde(default)]

@@ -1,5 +1,5 @@
 use crate::config::local_version::{normalize_community_version, read_build_version};
-use crate::config::{Channel, UpdateStrategy};
+use crate::config::{Channel, UpdateStrategy, OFFICIAL_DOMAIN};
 use crate::dashboard::fetch_dashboard_config;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
@@ -206,7 +206,12 @@ pub async fn check_update(
                 .filter(|version| !version.is_empty()),
         )
     };
-    let ch = Channel::from_domain(&domain, &channel);
+    let metadata_domain = if domain.trim().is_empty() {
+        OFFICIAL_DOMAIN
+    } else {
+        domain.trim()
+    };
+    let ch = Channel::from_domain(metadata_domain, &channel);
     let client = state.http.read().await.client();
     let remote_version = if update_strategy == UpdateStrategy::Patch {
         let version = fetch_dashboard_config(&client, &dashboard_url)
@@ -275,9 +280,6 @@ async fn spawn_pipeline(
             return Err(AppError::InvalidPath(
                 "安装根目录不能包含中文或非 ASCII 字符".into(),
             ));
-        }
-        if s.mirror_domain.is_empty() {
-            return Err(AppError::settings("尚未配置镜像源域名"));
         }
     }
 
