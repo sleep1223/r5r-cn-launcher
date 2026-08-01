@@ -33,6 +33,8 @@ pub struct DashboardConfig {
     #[serde(default)]
     pub game_version: String,
     #[serde(default)]
+    pub total_users: Option<u64>,
+    #[serde(default)]
     pub patches: Vec<PatchEntry>,
     #[serde(default)]
     pub announcement: Announcement,

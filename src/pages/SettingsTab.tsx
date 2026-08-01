@@ -25,6 +25,20 @@ import {
 
 const CUSTOM_OPTION = "__custom__";
 const DOWNLOAD_CONCURRENCY_OPTIONS = [1, 4, 5, 10, 15, 20, 50, 75, 100];
+const GAME_LANGUAGES = [
+  ["schinese", "简体中文"],
+  ["tchinese", "繁体中文"],
+  ["english", "English"],
+  ["japanese", "日本語"],
+  ["korean", "한국어"],
+  ["german", "Deutsch"],
+  ["french", "Français"],
+  ["italian", "Italiano"],
+  ["spanish", "Español"],
+  ["portuguese", "Português"],
+  ["polish", "Polski"],
+  ["russian", "Русский"],
+] as const;
 
 interface SettingsTabProps {
   focusDiagnostics?: boolean;
@@ -72,6 +86,9 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
   const [mirrorDomain, setMirrorDomain] = useState("");
   const [updateStrategy, setUpdateStrategy] = useState<UpdateStrategy>("patch");
   const [downloadHdTextures, setDownloadHdTextures] = useState(false);
+  const [installedLanguages, setInstalledLanguages] = useState<string[]>([
+    "schinese",
+  ]);
   const [launchViaEaApp, setLaunchViaEaApp] = useState(true);
   const [usageReportingEnabled, setUsageReportingEnabled] = useState(true);
   const [libraryRoot, setLibraryRoot] = useState("");
@@ -106,6 +123,20 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
     setMirrorDomain(settings.mirror_domain);
     setUpdateStrategy(settings.update_strategy);
     setDownloadHdTextures(settings.download_hd_textures);
+    const selectedChannel = settings.selected_channel || "LIVE";
+    const channelName =
+      selectedChannel.toUpperCase() === "LIVE_GAME"
+        ? "LIVE"
+        : selectedChannel;
+    const channelState =
+      settings.channels[channelName] ??
+      settings.channels[channelName.toUpperCase()] ??
+      settings.channels.LIVE;
+    setInstalledLanguages(
+      channelState?.installed_languages.length
+        ? channelState.installed_languages
+        : ["schinese"],
+    );
     setLaunchViaEaApp(settings.launch_via_ea_app);
     setUsageReportingEnabled(settings.usage_reporting_enabled);
     setLibraryRoot(settings.library_root.replace(/\\/g, "/"));
@@ -269,6 +300,24 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
     const updateStrategyChanged = updateStrategy !== settings.update_strategy;
     const hdTexturesChanged =
       downloadHdTextures !== settings.download_hd_textures;
+    const selectedChannel = settings.selected_channel || "LIVE";
+    const channelName =
+      selectedChannel.toUpperCase() === "LIVE_GAME"
+        ? "LIVE"
+        : selectedChannel;
+    const currentChannel = settings.channels[channelName] ?? {
+      installed: false,
+      version: "",
+      key: "",
+      installed_languages: [],
+    };
+    const normalizedLanguages = [...installedLanguages].sort();
+    const savedLanguages = currentChannel.installed_languages.length
+      ? currentChannel.installed_languages
+      : ["schinese"];
+    const languagesChanged =
+      JSON.stringify(normalizedLanguages) !==
+      JSON.stringify([...savedLanguages].sort());
     const launchViaEaAppChanged =
       launchViaEaApp !== settings.launch_via_ea_app;
     const usageReportingChanged =
@@ -281,6 +330,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
       !concurrencyChanged &&
       !updateStrategyChanged &&
       !hdTexturesChanged &&
+      !languagesChanged &&
       !launchViaEaAppChanged &&
       !usageReportingChanged
     ) {
@@ -301,6 +351,15 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
           concurrent_downloads: concurrency,
           update_strategy: updateStrategy,
           download_hd_textures: downloadHdTextures,
+          channels: languagesChanged
+            ? {
+                ...settings.channels,
+                [channelName]: {
+                  ...currentChannel,
+                  installed_languages: normalizedLanguages,
+                },
+              }
+            : settings.channels,
           launch_via_ea_app: launchViaEaApp,
           usage_reporting_enabled: usageReportingEnabled,
         });
@@ -320,6 +379,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
     mirrorDomain,
     updateStrategy,
     downloadHdTextures,
+    installedLanguages,
     launchViaEaApp,
     usageReportingEnabled,
     libraryRoot,
@@ -492,6 +552,41 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         </label>
       </GlassCard>
 
+      {/* 游戏语言 */}
+      <GlassCard>
+        <SectionHeader
+          icon="文"
+          title="游戏语言包"
+          subtitle="校验、下载和更新时保留所选语言文件；至少选择一种。"
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {GAME_LANGUAGES.map(([code, label]) => {
+            const checked = installedLanguages.includes(code);
+            return (
+              <label
+                key={code}
+                className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white/75"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={checked && installedLanguages.length === 1}
+                  onChange={(event) => {
+                    setInstalledLanguages((current) =>
+                      event.target.checked
+                        ? [...new Set([...current, code])]
+                        : current.filter((language) => language !== code),
+                    );
+                  }}
+                  className="h-4 w-4 accent-blue-400"
+                />
+                <span>{label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </GlassCard>
+
       {/* EA App 随启动器启动 */}
       <GlassCard>
         <SectionHeader
@@ -598,7 +693,7 @@ export function SettingsTab({ focusDiagnostics = false }: SettingsTabProps) {
         <SectionHeader
           icon="⬇"
           title="下载并发数"
-          subtitle="默认同时下载 4 个文件；大量小文件可使用 50 或 100。"
+          subtitle="限制同时进行的 HTTP 下载请求；分块请求也计入，默认 4。"
         />
         <div className="flex items-center gap-3">
           <select

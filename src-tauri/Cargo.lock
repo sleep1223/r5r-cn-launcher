@@ -556,6 +556,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -2176,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "launcher-app"
-version = "0.36.15"
+version = "0.36.16"
 dependencies = [
  "anyhow",
  "async-channel",

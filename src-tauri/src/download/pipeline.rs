@@ -1,3 +1,4 @@
+use crate::config::fetch::resolve_channel;
 use crate::config::local_version::{normalize_community_version, read_build_version};
 use crate::config::{Channel, UpdateStrategy, OFFICIAL_DOMAIN};
 use crate::dashboard::fetch_dashboard_config;
@@ -105,7 +106,7 @@ pub async fn run_install(
             s.mirror_domain.clone(),
             s.dashboard_api_url.clone(),
             s.library_root.clone(),
-            vec!["schinese".to_string()],
+            s.installed_languages_for(&channel_name),
             s.normalized_download_concurrency(),
             s.update_strategy,
             s.download_hd_textures,
@@ -121,7 +122,21 @@ pub async fn run_install(
     } else {
         OFFICIAL_DOMAIN
     };
-    let channel = Channel::from_domain(metadata_domain, &channel_name);
+    let client: Client = state.http.read().await.client();
+    let channel_key = state.settings.read().channel_key_for(&channel_name);
+    let channel = resolve_channel(
+        &client,
+        &channel_name,
+        mirror_configured.then_some(metadata_domain),
+        channel_key,
+    )
+    .await?;
+    if mode == InstallMode::Update && !channel.allow_updates {
+        return Err(AppError::Manifest(format!(
+            "官方配置当前不允许更新频道 {}",
+            channel_name
+        )));
+    }
     emit_log(
         &app,
         &job_id,
@@ -131,9 +146,6 @@ pub async fn run_install(
             channel.name, channel.game_url
         ),
     );
-
-    let client: Client = state.http.read().await.client();
-
     // In patch mode the dashboard's community version is authoritative. Use
     // it as a stable cache key for checksums.json so a newly published release
     // does not reuse the previous version's CDN object.
@@ -471,8 +483,7 @@ pub async fn run_install(
     // source. A dashboard failure in mirror mode is fatal and never falls
     // through to another domain.
     let download_channel = if mirror_configured {
-        match resolve_download_channel(&app, &job_id, &client, &dashboard_url, &channel_name).await
-        {
+        match resolve_download_channel(&app, &job_id, &client, &dashboard_url, &channel).await {
             Ok(channel) => channel,
             Err(e) => {
                 emit_log(
@@ -488,7 +499,7 @@ pub async fn run_install(
             }
         }
     } else {
-        let channel = Channel::from_domain(OFFICIAL_DOMAIN, &channel_name);
+        let channel = channel.clone();
         emit_log(
             &app,
             &job_id,
@@ -517,6 +528,7 @@ pub async fn run_install(
 
     let retry_full = RetryPolicy::full_file();
     let retry_chunk = RetryPolicy::chunk();
+    let network_sem = Arc::new(Semaphore::new(concurrent_downloads as usize));
 
     let spawn_download = |tasks: &mut JoinSet<AppResult<()>>, entry: ManifestEntry| {
         let client = client.clone();
@@ -525,6 +537,7 @@ pub async fn run_install(
         let agg = agg.clone();
         let cancel = cancel.clone();
         let pause = pause.clone();
+        let network_sem = network_sem.clone();
         tasks.spawn(async move {
             pause.wait().await;
             if cancel.is_cancelled() {
@@ -540,6 +553,7 @@ pub async fn run_install(
                     &cancel,
                     &pause,
                     &retry_full,
+                    &network_sem,
                 )
                 .await
             } else {
@@ -552,6 +566,7 @@ pub async fn run_install(
                     &cancel,
                     &pause,
                     &retry_chunk,
+                    &network_sem,
                 )
                 .await
             }
@@ -672,7 +687,7 @@ async fn resolve_download_channel(
     job_id: &str,
     client: &Client,
     dashboard_url: &str,
-    channel_name: &str,
+    metadata_channel: &Channel,
 ) -> AppResult<Channel> {
     let dashboard = fetch_dashboard_config(client, dashboard_url).await?;
     let domain = dashboard.download_domain.trim();
@@ -680,7 +695,12 @@ async fn resolve_download_channel(
         return Err(AppError::http("数据面板响应中的 download_domain 为空"));
     }
 
-    let channel = Channel::from_domain(domain, channel_name);
+    let channel = Channel::from_remote(
+        metadata_channel,
+        &metadata_channel.name,
+        Some(domain),
+        metadata_channel.key.clone(),
+    );
     emit_log(
         app,
         job_id,

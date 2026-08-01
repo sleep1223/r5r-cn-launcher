@@ -1,5 +1,5 @@
-use crate::config::fetch::fetch_channel_version;
-use crate::config::{Channel, OFFICIAL_DOMAIN};
+use crate::config::fetch::{fetch_channel_version, resolve_channel};
+use crate::config::OFFICIAL_DOMAIN;
 use crate::error::AppResult;
 use crate::state::LauncherState;
 use tauri::State;
@@ -15,7 +15,14 @@ pub async fn get_channel_version(
     } else {
         domain.trim()
     };
-    let ch = Channel::from_domain(metadata_domain, &channel);
     let client = state.http.read().await.client();
+    let key = state.settings.read().channel_key_for(&channel);
+    let ch = resolve_channel(
+        &client,
+        &channel,
+        (metadata_domain != OFFICIAL_DOMAIN).then_some(metadata_domain),
+        key,
+    )
+    .await?;
     fetch_channel_version(&client, &ch).await
 }

@@ -215,6 +215,41 @@ impl LauncherSettings {
         normalize_download_concurrency(self.concurrent_downloads)
     }
 
+    pub fn channel_state(&self, channel_name: &str) -> Option<&PerChannelState> {
+        self.channels
+            .get(channel_name)
+            .or_else(|| self.channels.get(&channel_name.to_uppercase()))
+            .or_else(|| {
+                self.channels.iter().find_map(|(name, state)| {
+                    if crate::config::remote::channel_folder_name(name)
+                        == crate::config::remote::channel_folder_name(channel_name)
+                    {
+                        Some(state)
+                    } else {
+                        None
+                    }
+                })
+            })
+    }
+
+    pub fn installed_languages_for(&self, channel_name: &str) -> Vec<String> {
+        let languages = self
+            .channel_state(channel_name)
+            .map(|state| state.installed_languages.clone())
+            .unwrap_or_default();
+        if languages.is_empty() {
+            vec!["schinese".to_string()]
+        } else {
+            languages
+        }
+    }
+
+    pub fn channel_key_for(&self, channel_name: &str) -> String {
+        self.channel_state(channel_name)
+            .map(|state| state.key.clone())
+            .unwrap_or_default()
+    }
+
     pub fn install_dir_for(&self, channel_name: &str) -> Option<PathBuf> {
         if self.library_root.is_empty() {
             return None;
@@ -279,6 +314,14 @@ mod tests {
         assert_eq!(
             normalize_download_concurrency(MAX_DOWNLOAD_CONCURRENCY + 1),
             MAX_DOWNLOAD_CONCURRENCY
+        );
+    }
+
+    #[test]
+    fn empty_language_selection_defaults_to_simplified_chinese() {
+        assert_eq!(
+            LauncherSettings::default().installed_languages_for("LIVE"),
+            vec!["schinese".to_string()]
         );
     }
 }

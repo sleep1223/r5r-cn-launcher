@@ -11,6 +11,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 /// Download all chunks of a multi-part file in parallel, then merge them
@@ -24,6 +25,7 @@ pub async fn download_chunked(
     cancel: &CancellationToken,
     pause: &Arc<PauseState>,
     retry: &RetryPolicy,
+    network_sem: &Arc<Semaphore>,
 ) -> AppResult<()> {
     let dest = entry_local_path(install_dir, &entry.path);
     if let Some(parent) = dest.parent() {
@@ -46,10 +48,12 @@ pub async fn download_chunked(
         let pause_outer = pause.clone();
         let tmp_root = tmp_root.clone();
         let retry = *retry;
+        let network_sem = network_sem.clone();
         futs.push(tokio::spawn(async move {
             // Local part filename — use the index so merge order is deterministic.
             let part_dest = tmp_root.join(format!("part_{:06}.bin", idx));
             let url = entry_url(&channel_clone, &part.path);
+            let part_size = part.size;
             retry
                 .run(|_| {
                     let url = url.clone();
@@ -59,9 +63,20 @@ pub async fn download_chunked(
                     let agg = agg.clone();
                     let cancel = cancel.clone();
                     let pause = pause_outer.clone();
+                    let network_sem = network_sem.clone();
                     async move {
-                        stream_download(&client, &url, &channel, &part_dest, &agg, &cancel, &pause)
-                            .await
+                        stream_download(
+                            &client,
+                            &url,
+                            &channel,
+                            &part_dest,
+                            part_size,
+                            &agg,
+                            &cancel,
+                            &pause,
+                            &network_sem,
+                        )
+                        .await
                     }
                 })
                 .await?;

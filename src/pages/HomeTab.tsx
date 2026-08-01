@@ -1106,6 +1106,12 @@ export function HomeTab({ onOpenDiagnostics }: HomeTabProps) {
                     {formatGameVersion(dashboard.game_version)}
                   </span>
                 )}
+                {dashboard?.total_users != null && (
+                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 text-violet-300 border border-violet-400/20">
+                    <span className="text-white/45">累计用户</span>
+                    {dashboard.total_users.toLocaleString("zh-CN")}
+                  </span>
+                )}
                 {installed && updateAvailable && (
                   <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/15 text-amber-300 border border-amber-400/30">
                     ↻ 有更新

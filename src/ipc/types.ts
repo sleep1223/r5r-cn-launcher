@@ -58,6 +58,7 @@ export interface DashboardConfig {
   launcher_update_url: string;
   force_update: boolean;
   game_version: string;
+  total_users: number | null;
   patches: DashboardPatch[];
   announcement: DashboardAnnouncement;
   rules: DashboardRule[];

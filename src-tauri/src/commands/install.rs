@@ -1,5 +1,6 @@
+use crate::config::fetch::resolve_channel;
 use crate::config::local_version::{normalize_community_version, read_build_version};
-use crate::config::{Channel, UpdateStrategy, OFFICIAL_DOMAIN};
+use crate::config::{UpdateStrategy, OFFICIAL_DOMAIN};
 use crate::dashboard::fetch_dashboard_config;
 use crate::download::{run_install, InstallMode};
 use crate::error::{AppError, AppResult};
@@ -211,8 +212,21 @@ pub async fn check_update(
     } else {
         domain.trim()
     };
-    let ch = Channel::from_domain(metadata_domain, &channel);
     let client = state.http.read().await.client();
+    let key = state.settings.read().channel_key_for(&channel);
+    let ch = resolve_channel(
+        &client,
+        &channel,
+        (metadata_domain != OFFICIAL_DOMAIN).then_some(metadata_domain),
+        key,
+    )
+    .await?;
+    if !ch.allow_updates {
+        return Err(AppError::Manifest(format!(
+            "官方配置当前不允许更新频道 {}",
+            channel
+        )));
+    }
     let remote_version = if update_strategy == UpdateStrategy::Patch {
         let version = fetch_dashboard_config(&client, &dashboard_url)
             .await?

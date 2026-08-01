@@ -47,13 +47,14 @@ pub async fn apply_patch(
     }
 
     // 1. Look up an applicable patch entry.
-    let (dashboard_url, library_root, install_dir, download_hd_textures) = {
+    let (dashboard_url, library_root, install_dir, download_hd_textures, installed_languages) = {
         let s = state.settings.read();
         (
             s.dashboard_api_url.clone(),
             s.library_root.clone(),
             s.install_dir_for(channel_name),
             s.download_hd_textures,
+            s.installed_languages_for(channel_name),
         )
     };
     if library_root.is_empty() {
@@ -115,6 +116,7 @@ pub async fn apply_patch(
         &install_dir,
         target_manifest,
         download_hd_textures,
+        &installed_languages,
         cancel.clone(),
     )
     .await?;
@@ -139,9 +141,10 @@ async fn verify_patched_install(
     install_dir: &Path,
     manifest: &GameManifest,
     download_hd_textures: bool,
+    installed_languages: &[String],
     cancel: CancellationToken,
 ) -> AppResult<()> {
-    let languages_wanted = ["schinese"];
+    let languages_wanted: Vec<&str> = installed_languages.iter().map(String::as_str).collect();
 
     for entry in manifest.files.iter().filter(|entry| {
         !is_user_generated(&entry.path)
